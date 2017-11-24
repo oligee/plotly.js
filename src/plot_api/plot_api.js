@@ -507,7 +507,7 @@ function plotPolar(gd, data, layout) {
     gd.framework = Polar.manager.framework(gd);
 
     // plot
-    gd.framework({data: gd.data, layout: gd.layout}, paperDiv.node(), 1);
+    gd.framework({data: gd.data, layout: gd.layout}, paperDiv.node(), 1, false);
     // set undo point
     gd.framework.setUndoPoint();
 

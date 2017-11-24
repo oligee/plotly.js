@@ -441,6 +441,16 @@ modeBarButtons.zoomOutPolar = {
     click: handlePolar
 };
 
+modeBarButtons.toggleSpikelinesPolar = {
+    name: 'toggleSpikelines',
+    title: 'Radian Mode',
+    icon: Icons.spikeline,
+    attr: '_cartesianSpikesEnabled',
+    val: 'on',
+    click: handleRadians,
+    toggle: true
+};
+
 modeBarButtons.resetGeo = {
     name: 'resetGeo',
     title: 'Reset',
@@ -491,6 +501,14 @@ function handlePolar(gd, ev) {
     } else {
         gd.framework({data: gd.data, layout: gd.layout}, undefined, 0.5);
     }
+
+}
+
+function handleRadians(gd, ev) {
+    var button = ev.currentTarget;
+    var toggle = button.getAttribute('data-toggle') || true;
+    gd.framework({data: gd.data, layout: gd.layout}, undefined, 1, toggle);
+
 
 }
 

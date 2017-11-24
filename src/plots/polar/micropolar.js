@@ -23,7 +23,8 @@ var radiansOn = false;
     var svg, container, dispatch = d3.dispatch('hover'), radialScale, angularScale;
     var exports = {};
 
-    function render(_container,scaler) {
+    function render(_container,scaler,isRadianOn) {
+        radiansOn = isRadianOn;
         container = _container || container;
         var data = config.data;
         var axisConfig = config.layout;
@@ -41,11 +42,8 @@ var radiansOn = false;
             liveConfig = {data: utility.cloneJson(dataOriginal),layout: utility.cloneJson(axisConfig)};
             // Adds lines between data (areas)
             dataOriginal = addSegementDividers(dataOriginal,axisConfig,liveConfig);
-            // Get Data - not sure what this is doing
-            var data = dataOriginal.filter(function(d, i) {
-                var visible = d.visible;
-                return typeof visible === 'undefined' || visible === true;
-            });
+            // Get Data Types
+            var data = getDataTypes(dataOriginal);
             // Check for stacked data 
             result  = isStackedCheck(data,axisConfig);
             isStacked = result[0];
@@ -57,51 +55,34 @@ var radiansOn = false;
             if (axisConfig.radialAxis.domain != µ.DATAEXTENT) extent[0] = 0;
             radialScale = d3.scale.linear().domain(axisConfig.radialAxis.domain != µ.DATAEXTENT && axisConfig.radialAxis.domain ? axisConfig.radialAxis.domain : extent).range([0, radius ]);
             liveConfig.layout.radialAxis.domain = radialScale.domain();
+
             var angularDataMerged = utility.flattenArray(data.map(function(d, i) {
                 return d.t;
             }));
-            
             // Builds some data based on if the plot is ordinal
             result = isOrdinalCheckOne(angularDataMerged,data,isStacked);
             data = result[0];
             ticks = result[1];
-
             angularDataMerged = result[2];
             isOrdinal = result[3];
             // More variable setup
             var hasOnlyLineOrDotPlot = data.filter(function(d, i) {
                 return d.geometry === 'LinePlot' || d.geometry === 'DotPlot';
             }).length === data.length;
-
-            var needsEndSpacing = axisConfig.needsEndSpacing === null ? isOrdinal || !hasOnlyLineOrDotPlot : axisConfig.needsEndSpacing;
-            var useProvidedDomain = axisConfig.angularAxis.domain && axisConfig.angularAxis.domain != µ.DATAEXTENT && !isOrdinal && axisConfig.angularAxis.domain[0] >= 0;
-            var angularDomain = useProvidedDomain ? axisConfig.angularAxis.domain : d3.extent(angularDataMerged);
-            var angularDomainStep = Math.abs(angularDataMerged[1] - angularDataMerged[0]);
-
-            if (hasOnlyLineOrDotPlot && !isOrdinal) angularDomainStep = 0;
-            var angularDomainWithPadding = angularDomain.slice();
-            if (needsEndSpacing && isOrdinal) angularDomainWithPadding[1] += angularDomainStep;
-            var tickCount = axisConfig.angularAxis.ticksCount || 4;
-            if (tickCount > 8) tickCount = tickCount / (tickCount / 8) + tickCount % 8;
-            if (axisConfig.angularAxis.ticksStep) {
-                tickCount = (angularDomainWithPadding[1] - angularDomainWithPadding[0]) / tickCount;
-            }
-
-            var angularTicksStep = axisConfig.angularAxis.ticksStep || (angularDomainWithPadding[1] - angularDomainWithPadding[0]) / (tickCount * (axisConfig.minorTicks + 1));
-            if (ticks) angularTicksStep = Math.max(Math.round(angularTicksStep), 1);
-            if (!angularDomainWithPadding[2]) angularDomainWithPadding[2] = angularTicksStep;
-            var angularAxisRange = d3.range.apply(this, angularDomainWithPadding);
-            angularAxisRange = angularAxisRange.map(function(d, i) {
-                return parseFloat(d.toPrecision(12));
-            });
-
-            angularScale = d3.scale.linear().domain(angularDomainWithPadding.slice(0, 2)).range(axisConfig.direction === 'clockwise' ? [ 0, 360 ] : [ 360, 0 ]);
+            var graphData = handlePlotTypes(axisConfig, isOrdinal, hasOnlyLineOrDotPlot,angularDataMerged);
+            var angularDomainWithPadding = graphData[0];
+            var needsEndSpacing = graphData[1];
+            var angularDomainStep = graphData[2];
+            //Build axies and create addtional feilds
+            var axisResults = buildAxis(axisConfig,angularDomainWithPadding);
+            var angularScale = axisResults[0];
+            var angularAxisRange = axisResults[1];
             liveConfig.layout.angularAxis.domain = angularScale.domain();
             liveConfig.layout.angularAxis.endPadding = needsEndSpacing ? angularDomainStep : 0;
             // Create svg
             svg = createSVG(this,d3);         
             var lineStyle = {fill: 'none',stroke: axisConfig.tickColor};
-            // Get font Style, for the title and axis
+            // Get font style, for the title and axis
             styles = buildFontStyle(axisConfig)
             fontStyle  = styles[0];
             titleStyle = styles[1];
@@ -118,13 +99,11 @@ var radiansOn = false;
             }
             var chartGroup = svg.select('.chart-group');
             // Set Svg Attributes
-
             svgData = assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCenter);
             svg = svgData[0];
             centeringOffset = svgData[1];
             // Create the radial Axis
             radialAxisData = createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,data);
-            //console.log(radialScale.ticks(5));
             radialAxis = radialAxisData[0];
             backgroundCircle = radialAxisData[1];
             // Could this be moved?
@@ -135,7 +114,6 @@ var radiansOn = false;
             var angularAxis = svg.select('.angular.axis-group').selectAll('g.angular-tick').data(angularAxisRange);
             var angularAxisEnter = angularAxis.enter().append('g').classed('angular-tick', true);
             angularAxis = assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup);
-
             // geometryContainer
             var hasGeometry = svg.select('g.geometry-group').selectAll('g').size() > 0;
             var geometryContainer = svg.select('g.geometry-group').selectAll('g.geometry').data(data);
@@ -143,11 +121,13 @@ var radiansOn = false;
             var guides = svg.select('.guides-group');
             // Tooltips Creation
             var tooltipContainer = svg.select('.tooltips-group');
+
             // Displays Degree's Value
             var angularTooltip = tooltip.tooltipPanel().config({
                 container: tooltipContainer,
                 fontSize: 8
             })();
+
             // Displays Distance Value
             var radialTooltip = tooltip.tooltipPanel().config({
                 container: tooltipContainer,
@@ -158,8 +138,8 @@ var radiansOn = false;
                 container: tooltipContainer,
                 hasTick: true
             })();
-            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angularScale,angularTooltip,chartCenter)
 
+            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angularScale,angularTooltip,chartCenter)
             var angularGuideCircle = guides.select('circle').style({
                 stroke: 'grey',
                 fill: 'none'
@@ -172,8 +152,8 @@ var radiansOn = false;
         return exports;
     }
 
-    exports.render = function(_container,scaler) {
-        render(_container,scaler);
+    exports.render = function(_container,scaler,isRadianOn) {
+        render(_container,scaler,isRadianOn);
         return this;
     };
     
@@ -243,6 +223,29 @@ var radiansOn = false;
             var data = _config.map(function(d, i) {
                 if (isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
             });
+            // Test for negatives 
+            var dataNegatives = false;
+            var lowestNegativePos = 0;
+            var highestPos = 0;
+            for(var numberOfEntries = 0;numberOfEntries < data[0].length;numberOfEntries++) {
+                //console.log(data[0][numberOfEntries][1]);
+                if(data[0][numberOfEntries][1]< 0) {
+                    dataNegatives = true;
+                    if(data[0][numberOfEntries][1] < data[0][lowestNegativePos][1]) {
+                        // Get lowest val
+                        lowestNegativePos = numberOfEntries;
+                    }
+                }else{
+                    if(data[0][numberOfEntries][1] > data[0][highestPos][1]) {
+                        // Get highest val
+                        highestPos = numberOfEntries;
+                    }
+                }
+            }
+            //console.log("Test for negatives "  + dataNegatives);
+            //console.log("Lowest neg " +  data[0][lowestNegativePos][1]);
+            //console.log(data);
+            
             var angularScale = geometryConfig.angularScale;
             var domainMin = geometryConfig.radialScale.domain()[0];
             var generator = {};
@@ -260,31 +263,102 @@ var radiansOn = false;
                 });
             };
             generator.dot = function(d, i, pI) {
+                //console.log("DOT");
+                dataIndex = i;
                 var stackedData = d[2] ? [ d[0], d[1] + d[2] ] : d;
                 var symbol = d3.svg.symbol().size(_config[pI].data.dotSize).type(_config[pI].data.dotType)(d, i);
                 d3.select(this).attr({
                     'class': 'mark dot',
                     d: symbol,
-                    transform: function(d, i) {
-                        //console.log(stackedData);
-                        var coord = convertToCartesian(getPolarCoordinates(stackedData,0));
+                    transform: function(d, dataIndex) {
+                        //console.log(d);
+                        //console.log(i);
+                        polarCoords = getPolarCoordinates(stackedData,0);
+                        if(dataNegatives) {
+                            if(i == lowestNegativePos){
+                            }
+                            if(d[1]< 0){
+                                polarCoords.r = polarMove - polarCoords.r
+                                polarCoords.r = polarCoords.r *locationRatio;
+                            }else{
+                                if(d[1]<Math.abs(data[0][lowestNegativePos][1])) {
+                                    polarCoords.r = polarMove + polarCoords.r
+                                    polarCoords.r = polarCoords.r *locationRatio;
+                                
+                                }
+                            }
+                        }
                         
+                        //console.log(polarCoords);
+                        var coord = convertToCartesian(polarCoords);
                         return 'translate(' + [ coord.x, coord.y ] + ')';
                     }
                 });
             };
-            //console.log("hey");
-            //console.log(getPolarCoordinates([360,-1]));
-            //console.log(convertToCartesian(getPolarCoordinates([360,1],360)));
+            //console.log("TESTING");
+            //console.log(getPolarCoordinates([180,0.5],0));
+            //console.log(geometryConfig.radialScale(-1));
+            //console.log("TESTS CONT>>>");
+            var polarMove = 0;
+            if(dataNegatives) {
+                var polarMove = getPolarCoordinates([data[0][lowestNegativePos][0],data[0][lowestNegativePos][1]],0).r;
+            }
+            //console.log("Polar Move " +polarMove);
+            // Create Ratio
+            if(dataNegatives) {
+                var ratioTotal = Math.abs(data[0][lowestNegativePos][1]) + data[0][highestPos][1];
+                var ratioSteps = 1/ratioTotal;
+                var ratioCreator = Math.abs(data[0][lowestNegativePos][1])*ratioSteps;
+                var locationRatio = 1;
+                if( Math.abs(data[0][lowestNegativePos][1]) > data[0][highestPos][1]) {
+                    locationRatio = 1 + ratioCreator;
+                    var zeroLoc = 90*locationRatio;
+                }else {
+                    locationRatio = 1 - ratioCreator;
+                    var zeroLoc = 180-(180*locationRatio);
+                }
+                //var zeroLoc = 90*locationRatio;
+                //console.log("ratioTotal " + ratioTotal);
+                //console.log("ratioSteps " + ratioSteps);
+                //console.log("data[0][highestPos][1] " + data[0][highestPos][1]);
+                //console.log("Math.abs(data[0][lowestNegativePos][1]) " + Math.abs(data[0][lowestNegativePos][1]));
+                //console.log("ratioCreator " + ratioCreator);
+                //console.log("locationRatio " + locationRatio);
+                //console.log("ZERO LOC " + zeroLoc);
+            }
+           
+
+
+
             var line = d3.svg.line.radial().interpolate(_config[0].data.lineInterpolation).radius(function(d) {
-                return geometryConfig.radialScale(d[1]);
+                var val = geometryConfig.radialScale(Math.abs(d[1]));
+                if(dataNegatives) {
+                    if(d[1]< 0){
+                        //console.log("HEY OVER HERE");
+                        //console.log("POLAR MOVE " + polarMove);
+                        //console.log("val " + val);
+                        //console.log("locationRatio " + locationRatio);
+                        val = polarMove - val
+                        val = val *locationRatio;
+                    }else{
+                        if(d[1]<Math.abs(data[0][lowestNegativePos][1])) {
+                            val = polarMove + val
+                            val = val *locationRatio;
+                        
+                        }
+                    }
+                }
+                //console.log(val);
+                return val;
             }).angle(function(d) {
                 return geometryConfig.angularScale(d[0]) * Math.PI / 180;
+                
             });
             generator.line = function(d, i, pI) {
                 var lineData = d[2] ? data[pI].map(function(d, i) {
                     return [ d[0], d[1] + d[2] ];
                 }) : data[pI];
+                //console.log(lineData);
                 d3.select(this).each(generator['dot']).style({
                     opacity: function(dB, iB) {
                         return +_config[pI].data.dotVisible;
@@ -294,12 +368,10 @@ var radiansOn = false;
                     'class': 'mark dot'
                 });
                 if (i > 0) return;
-                //for(var counter = 0;counter < lineData.length-1;counter++){
                     var lineSelection = d3.select(this.parentNode).selectAll('path.line').data([ 0 ]);
                     lineSelection.enter().insert('path');
                     lineSelection.attr({
                         'class': 'line',
-                        //d: line([lineData[counter],lineData[counter+1]]),
                         d: line(lineData),
                         transform: function(dB, iB) {
                             return 'rotate(' + (geometryConfig.orientation + 90) + ')';
@@ -326,8 +398,6 @@ var radiansOn = false;
                             return markStyle.display(d, i, pI);
                         }
                     });
-                    //console.log(counter)
-                //}
             };
             var angularRange = geometryConfig.angularScale.range();
             var triangleAngle = Math.abs(angularRange[1] - angularRange[0]) / data[0].length * Math.PI / 180;
@@ -379,13 +449,13 @@ var radiansOn = false;
             geometry.enter().append('path').attr({
                 'class': 'mark'
             });
+            
             geometry.style(markStyle).each(generator[geometryConfig.geometryType]);
             geometry.exit().remove();
             geometryLayer.exit().remove();
             function getPolarCoordinates(d, i) {
-                var r = geometryConfig.radialScale(d[1]);
+                var r = geometryConfig.radialScale(Math.abs(d[1]));
                 var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
-                //console.log(r,t);
                 return {
                     r: r,
                     t: t
@@ -521,6 +591,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
 }
 
 function buildFontStyle(axisConfig){
+    var titleStyle = {'font-indicationbar': axisConfig.font};
     var fontStyle = {
         'font-size': axisConfig.font.size,
         'font-family': axisConfig.font.family,
@@ -603,8 +674,6 @@ function assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCe
 function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
     var radialAxis = svg.select('.radial.axis-group');
     if (axisConfig.radialAxis.gridLinesVisible) {
-        //console.log(plotData);
-        //console.log(radialScale.ticks(10));
         //get heighest and lowest value
         highestVal = 0;
         lowestVal =0;
@@ -624,10 +693,11 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         for(var count = 1; count <= steps;count++){
             values.push(lowestVal+(interval*count));
         }
-        //console.log(values);
-
-
+        console.log((radialScale).ticks(5));
+        //var replace = [0, 1, 2, 3, 4, 5, 6];
+        //replace[0] = -6;
         var gridCircles = radialAxis.selectAll('circle.grid-circle').data((radialScale).ticks(5));
+        console.log(gridCircles);
         gridCircles.enter().append('circle').attr({
             'class': 'grid-circle'
         }).style(lineStyle);
@@ -649,8 +719,54 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         radialAxis.call(axis).attr({
             transform: 'rotate(' + axisConfig.radialAxis.orientation + ')'
         });
+        var axisAngle = {'indicationbar': axisConfig.indicationBar};
+        if(axisAngle["indicationbar"]!== undefined) {
+            radialAxis.call(axis).attr({
+                transform: 'rotate(' +axisAngle["indicationbar"]+ ')'
+            });
+        }
+
         radialAxis.selectAll('.domain').style(lineStyle);
+        
+        // Test for negatives 
+        var dataNegatives = false;
+        var highestVal = 0;
+        var lowestVal =0;
+        var negativeAxis = [];
+        console.log(plotData)
+
+        for(var numberOfData = 0;numberOfData<plotData.length;numberOfData++){
+            for(var counter = 0;counter<plotData[numberOfData].r[0].length;counter++){
+                if(plotData[numberOfData].r[0][counter] > highestVal) {
+                    highestVal = plotData[numberOfData].r[0][counter]; 
+                }
+                if(plotData[numberOfData].r[0][counter] < lowestVal) {
+                    lowestVal = plotData[numberOfData].r[0][counter]; 
+                }
+                if(plotData[numberOfData].r[0][counter]< 0 ) {
+                    dataNegatives = true;
+                }
+            }
+        }
+
+        if(dataNegatives) {
+            var steps = 5;
+            var interval = (Math.abs(highestVal) - lowestVal)/steps;
+            negativeAxis = [lowestVal];
+            for(var count = 1; count <= steps;count++){
+                negativeAxis.push((lowestVal+(interval*count)).toPrecision(2));
+            }
+        }
+        console.log(negativeAxis);
+
+
         radialAxis.selectAll('g>text').text(function(d, i) {
+            console.log(i);
+            if(dataNegatives) {
+                return negativeAxis[i] + axisConfig.radialAxis.ticksSuffix;
+            }
+
+            // deal with negative changes
             return this.textContent + axisConfig.radialAxis.ticksSuffix;
         }).style(fontStyle).style({
             'text-anchor': 'start'
@@ -673,6 +789,7 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
 }
 
 function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup){
+    // Renders Axis to the screen
     angularAxis.attr({transform: function(d, i) {
             return 'rotate(' + currentAngle(d, i) + ')';
         }
@@ -685,7 +802,7 @@ function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angular
     angularAxisEnter.append('line').classed('grid-line', true).classed('major', function(d, i) {
         return i % (axisConfig.minorTicks + 1) == 0;
     }).classed('minor', function(d, i) {
-        return !(i % (axisConfig.minorTicks + 1) == 0);
+        return !(i % (axisConfig.minorTicks + 1) == 0); 
     }).style(lineStyle);
 
     angularAxisEnter.selectAll('.minor').style({stroke: axisConfig.minorTickColor});
@@ -705,7 +822,9 @@ function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angular
             var angle = currentAngle(d, i);
             var rad = radius + axisConfig.labelOffset;
             var orient = axisConfig.angularAxis.tickOrientation;
-            if (orient == 'horizontal') return 'rotate(' + -angle + ' ' + rad + ' 0)'; else if (orient == 'radial') return angle < 270 && angle > 90 ? 'rotate(180 ' + rad + ' 0)' : null; else return 'rotate(' + (angle <= 180 && angle > 0 ? -90 : 90) + ' ' + rad + ' 0)';
+            if (orient == 'horizontal') return 'rotate(' + -angle + ' ' + rad + ' 0)';
+            else if (orient == 'radial') return angle < 270 && angle > 90 ? 'rotate(180 ' + rad + ' 0)' : null;
+                else return 'rotate(' + (angle <= 180 && angle > 0 ? -90 : 90) + ' ' + rad + ' 0)';
         }
     }).style({
         'text-anchor': 'middle',
@@ -713,13 +832,11 @@ function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angular
     }).text(function(d, i) {
         if (i % (axisConfig.minorTicks + 1) != 0) return '';
         if (ticks) {
+            // Deal with area plots axies
             return ticks[d] + axisConfig.angularAxis.ticksSuffix;
-        } else if(radiansOn){
-            // Display for Radians
-            return ((parseInt(d)*Math.PI)/180).toPrecision(3).toString(); + axisConfig.angularAxis.ticksSuffix;
-        } else {
-            // Display for Degrees
-            return d + axisConfig.angularAxis.ticksSuffix;
+        } else{
+            // Deal with other polar plots axies
+            return (renderAxies(d, i, axisConfig));
         }
     }).style(fontStyle);
     if (axisConfig.angularAxis.rewriteTicks) ticksText.text(function(d, i) {
@@ -755,7 +872,7 @@ function isOrdinalCheckOne(angularDataMerged,data,isStacked){
     return [data,ticks,angularDataMerged,isOrdinal]
 }
 
-function isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angularScale,angularTooltip,chartCenter){
+function isOrdinalCheckTwo(isOrdinal, guides, chartGroup, radius, axisConfig, angularScale, angularTooltip, chartCenter) {
     if (!isOrdinal) {
         var angularGuideLine = guides.select('line').attr({
             x1: 0,
@@ -775,7 +892,7 @@ function isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angular
             });
             var angleWithOriginOffset = (mouseAngle + 180 + 360 - axisConfig.orientation) % 360;
             angularValue = angularScale.invert(angleWithOriginOffset);
-            //Display radians on tool tip
+            // Display radians on tool tip
             if(radiansOn){
                 angularValue = ((parseInt(angularValue)*Math.PI)/180).toPrecision(3);
             }
@@ -791,13 +908,8 @@ function isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angular
     
 }
 
-function assignGeometryContainerAttributes(geometryContainer,data,radialScale,angularScale,axisConfig,scale,radialScale){
-
-    //debugger;
-    //console.log(data[0]);
-    //console.log(data[0].r);
+function assignGeometryContainerAttributes(geometryContainer, data, radialScale, angularScale, axisConfig, scale, radialScale){
     var radialScaleValues = radialScale.ticks(5);
-    //console.log(radialScaleValues);
     var getMaxVal = radialScaleValues[radialScaleValues.length -1 ];
     for(var numberOfData = 0;numberOfData<data.length;numberOfData++){
         
@@ -812,22 +924,18 @@ function assignGeometryContainerAttributes(geometryContainer,data,radialScale,an
         data[numberOfData].r[0] = rs;
         data[numberOfData].t[0] = rt;
     }
-    //console.log(rs);
-
-
 
     geometryContainer.enter().append('g').attr({
         'class': function(d, i) {
             return 'geometry geometry' + i;
         }
     });
+
     geometryContainer.exit().remove();
     if (data[0] || hasGeometry) {
         
         var geometryConfigs = [];
         data.forEach(function(d, i) {
-            
-            
             var geometryConfig = {};
             geometryConfig.radialScale = radialScale;
             geometryConfig.angularScale = angularScale;
@@ -841,35 +949,34 @@ function assignGeometryContainerAttributes(geometryContainer,data,radialScale,an
             geometryConfigs.push({
                 data: d,
                 geometryConfig: geometryConfig
-            });
-            //console.log(d);
-            //console.log(geometryConfig);
-            
+            });         
         });
+
         var geometryConfigsGrouped = d3.nest().key(function(d, i) {
             return typeof d.data.groupId != 'undefined' || 'unstacked';
         }).entries(geometryConfigs);
+
         var geometryConfigsGrouped2 = [];
         geometryConfigsGrouped.forEach(function(d, i) {
             if (d.key === 'unstacked') geometryConfigsGrouped2 = geometryConfigsGrouped2.concat(d.values.map(function(d, i) {
                 return [ d ];
             })); else geometryConfigsGrouped2.push(d.values);
         });
+
         geometryConfigsGrouped2.forEach(function(d, i) {
             var geometry;
             if (Array.isArray(d)) geometry = d[0].geometryConfig.geometry; else geometry = d.geometryConfig.geometry;
             var finalGeometryConfig = d.map(function(dB, iB) {
                 return extendDeepAll(µ[geometry].defaultConfig(), dB);
             });
-            //console.log(finalGeometryConfig);
-            //debugger;
             µ[geometry]().config(finalGeometryConfig)();
         });
+        
     }
     return geometryContainer
 }
 
-function svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data){
+function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
     svg.selectAll('.geometry-group .mark').on('mouseover.tooltip', function(d, i) {
         var el = d3.select(this);
         var color = this.style.fill;
@@ -948,7 +1055,7 @@ function svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data){
     });
 }
 
-function outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip){
+function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip){
     chartGroup.on('mousemove.radial-guide', function(d, i) {
         var r = utility.getMousePos(backgroundCircle).radius;
         angularGuideCircle.attr({
@@ -970,7 +1077,7 @@ function outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircl
     return chartGroup
 }
 
-function addSegementDividers(dataOriginal,axisConfig,liveConfig){
+function addSegementDividers(dataOriginal, axisConfig, liveConfig){
     var colorIndex = 0;
     dataOriginal.forEach(function(d, i) {
         if (!d.color) {
@@ -988,7 +1095,7 @@ function addSegementDividers(dataOriginal,axisConfig,liveConfig){
     return dataOriginal
 }
 
-function isStackedCheck(data,axisConfig){
+function isStackedCheck(data, axisConfig) {
     var isStacked = false;
     var dataWithGroupId = data.map(function(d, i) {
         isStacked = isStacked || typeof d.groupId !== 'undefined';
@@ -1031,5 +1138,108 @@ function isStackedCheck(data,axisConfig){
     })));
     return [isStacked,radius,chartCenter,dataWithGroupId,extent]
 }
+
+function getDataTypes(dataOriginal) {
+    return(dataOriginal.filter(function(d, i) {
+        var visible = d.visible;
+        return typeof visible === 'undefined' || visible === true;
+    })) 
+}
+             
+function handlePlotTypes(axisConfig, isOrdinal, hasOnlyLineOrDotPlot,angularDataMerged) {
+    var needsEndSpacing = axisConfig.needsEndSpacing === null ? isOrdinal || !hasOnlyLineOrDotPlot : axisConfig.needsEndSpacing;
+    var useProvidedDomain = axisConfig.angularAxis.domain && axisConfig.angularAxis.domain != µ.DATAEXTENT && !isOrdinal && axisConfig.angularAxis.domain[0] >= 0;
+    var angularDomain = useProvidedDomain ? axisConfig.angularAxis.domain : d3.extent(angularDataMerged);
+    var angularDomainStep = Math.abs(angularDataMerged[1] - angularDataMerged[0]);
+
+    if (hasOnlyLineOrDotPlot && !isOrdinal) angularDomainStep = 0;
+    var angularDomainWithPadding = angularDomain.slice();
+    if (needsEndSpacing && isOrdinal) angularDomainWithPadding[1] += angularDomainStep;
+    return [angularDomainWithPadding,needsEndSpacing,angularDomainStep];
+}
+
+function buildAxis(axisConfig, angularDomainWithPadding) {
+    // Number of Axies
+    // Tests if user had defined a set amount, if so uses that instead of the default
+    var Default_Axies_Number = 4;
+    var angleLabelStep = {'angleLabelStep': axisConfig.angleLabelStep};
+    if(angleLabelStep["angleLabelStep"]!== undefined) {
+        var tickCount = axisConfig.angularAxis.ticksCount || angleLabelStep["angleLabelStep"];
+    }else{
+        var tickCount = axisConfig.angularAxis.ticksCount || Default_Axies_Number;
+    }
+    // Create the interval value to create the range
+    angularAxisRange = buildAxiesRange(axisConfig, tickCount, angularDomainWithPadding);
+    // Return the result once addtional Axies had been applied
+    return(buildAddtionalAxies(axisConfig, angularAxisRange, angularDomainWithPadding));
+}
+
+function buildAddtionalAxies(axisConfig, angularAxisRange, angularDomainWithPadding) {
+        // ADDTIONAL VALUES
+        var angleLabels = {'angleLabels': axisConfig.angleLabels};
+        if(angleLabels.angleLabels !== undefined){
+        var vals = Object.keys(angleLabels).map(function(key) {
+                for(var counter = 0;counter < angleLabels[key].length;counter++) {
+                    if(!(angularAxisRange.includes(angleLabels[key][counter].val))) {
+                        angularAxisRange.push((angleLabels[key][counter].val));
+                    }
+                }
+            });
+        }
+        // ADDTIONAL VALUES END
+        angularScale = d3.scale.linear().domain(angularDomainWithPadding.slice(0, 2)).range(axisConfig.direction === 'clockwise' ? [ 0, 360 ] : [ 360, 0 ]);
+        return  [angularScale,angularAxisRange]
+}
+
+function buildAxiesRange(axisConfig, tickCount, angularDomainWithPadding) {
+    // Creates the core list of degree axies
+    if (tickCount > 8) tickCount = tickCount / (tickCount / 8) + tickCount % 8;
+    if (axisConfig.angularAxis.ticksStep) {
+        tickCount = (angularDomainWithPadding[1] - angularDomainWithPadding[0]) / tickCount;
+    }
+    var angularTicksStep = axisConfig.angularAxis.ticksStep || (angularDomainWithPadding[1] - angularDomainWithPadding[0]) / (tickCount * (axisConfig.minorTicks + 1));
+    if (ticks) angularTicksStep = Math.max(Math.round(angularTicksStep), 1);
+    if (!angularDomainWithPadding[2]) angularDomainWithPadding[2] = angularTicksStep;
+    // Create the range of values used on the axies
+    var angularAxisRange = d3.range.apply(this, angularDomainWithPadding);
+    angularAxisRange = angularAxisRange.map(function(d, i) {
+        return parseFloat(d.toPrecision(12));
+    });
+    // Return the degree points from which axies will be drawn
+    return angularAxisRange;
+}
+
+function renderAxies(d, i, axisConfig){
+    if(radiansOn){
+        // Display for Radians
+        var addtionalLabels = getAngleLabels(d, i, axisConfig);
+        if(addtionalLabels != ""){
+            return addtionalLabels;
+        }
+        return ((parseInt(d)*Math.PI)/180).toPrecision(3).toString() + axisConfig.angularAxis.ticksSuffix;
+    } else {
+        // Display for Degrees
+        var addtionalLabels = getAngleLabels(d, i, axisConfig);
+        if(addtionalLabels != ""){
+            return addtionalLabels;
+        }
+        return d + axisConfig.angularAxis.ticksSuffix;
+    }
+}
+function getAngleLabels(d, i, axisConfig){
+    var angleLabels = {'angleLabels': axisConfig.angleLabels}; 
+    var addtionalLabels = "";
+    if(angleLabels.angleLabels !== undefined){
+        addtionalLabels = Object.keys(angleLabels).map(function(key) {
+            for(var counter = 0;counter < angleLabels[key].length;counter++){
+                if(d == angleLabels[key][counter].val.toString()) {
+                    return angleLabels[key][counter].label.toString();
+                }
+            }
+        });
+    }
+    return addtionalLabels
+}
+
 
 

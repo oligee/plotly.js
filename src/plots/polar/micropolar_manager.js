@@ -19,13 +19,14 @@ var UndoManager = require('./undo_manager');
 var extendDeepAll = Lib.extendDeepAll;
 var manager = module.exports = {};
 var scale = 1;
+var isRadianOn = false;
 manager.framework = function(_gd) {
     var config, previousConfigClone, plot, convertedInput, container;
     var undoManager = new UndoManager();
     var savedContainer;
     // resset scale to avoid issues
     scale = 1;
-    function exports(_inputConfig, _container, scaler) {
+    function exports(_inputConfig, _container, scaler, flipRadian) {
         if(_container !== undefined) {
             savedContainer = _container;
         } else {
@@ -41,7 +42,10 @@ manager.framework = function(_gd) {
         if(!plot) plot = micropolar.Axis();
         convertedInput = adapter.plotly().convert(config);
         scale = scale * scaler;
-        plot.config(convertedInput).render(container, scale);
+        if(flipRadian) {
+            this.isRadianOn = !this.isRadianOn;
+        }
+        plot.config(convertedInput).render(container, scale, this.isRadianOn);
         _gd.data = config.data;
         _gd.layout = config.layout;
         manager.fillLayout(_gd);

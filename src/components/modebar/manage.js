@@ -12,7 +12,6 @@
 var Axes = require('../../plots/cartesian/axes');
 var scatterSubTypes = require('../../traces/scatter/subtypes');
 var Registry = require('../../registry');
-
 var createModeBar = require('./modebar');
 var modeBarButtons = require('./buttons');
 
@@ -123,7 +122,7 @@ function getButtonGroups(gd, buttonsToRemove, buttonsToAdd) {
         dragModeGroup = ['zoom2d', 'pan2d'];
     }
     if(hasPolar) {
-        addGroup(['zoomInPolar', 'zoomOutPolar']);
+        addGroup(['zoomInPolar', 'zoomOutPolar', 'toggleSpikelinesPolar']);
     }
     if(hasMapbox || hasGeo) {
         dragModeGroup = ['pan2d'];

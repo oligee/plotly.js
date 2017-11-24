@@ -11,8 +11,8 @@ var d3 = require('d3');
 var defaultConfig = function defaultConfig() {
     var config = {
         data: [ {
-            t: [ 1, 2, 3, 4 ],
-            r: [ 10, 11, 12, 13 ],
+            t: [1],
+            r: [10],
             name: 'Line1',
             geometry: 'LinePlot',
             color: null,
@@ -26,7 +26,7 @@ var defaultConfig = function defaultConfig() {
             defaultColorRange: d3.scale.category10().range(),
             title: null,
             height: 450,
-            width: 500,
+            width: 700,
             margin: {
                 top: 40,
                 right: 40,
@@ -81,8 +81,8 @@ var polyChartDefaultConfig = function polyChartDefaultConfig() {
     var config = {
         data: {
             name: 'geom1',
-            t: [ [ 1, 2, 3, 4 ] ],
-            r: [ [ 1, 2, 3, 4 ] ],
+            t: [ [1] ],
+            r: [ [1] ],
             dotType: 'circle',
             dotSize: 64,
             dotVisible: false,
