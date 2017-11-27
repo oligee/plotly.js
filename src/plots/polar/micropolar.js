@@ -17,6 +17,10 @@ var extendDeepAll = Lib.extendDeepAll;
 var MID_SHIFT = require('../../constants/alignment').MID_SHIFT;
 var µ = module.exports = { version: '0.2.2' };
 var radiansOn = false;
+var zeroLocation = 0;
+var polarMoved = 0;
+var zeroRatio =0;
+var lowestPolar =0;
 // Render the Polar Plot
 µ.Axis = function module(){
     var config = {data: [],layout: {}}, inputConfig = {}, liveConfig = {};
@@ -145,7 +149,7 @@ var radiansOn = false;
                 fill: 'none'
             });
             // outer ring display
-            chartGroup =  outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip);
+            chartGroup =  outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip,data);
             // Displays box with result values in
             svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data);
         });
@@ -224,13 +228,13 @@ var radiansOn = false;
                 if (isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
             });
             // Test for negatives 
-            var dataNegatives = false;
+            var dataNegativesFound = false;
             var lowestNegativePos = 0;
             var highestPos = 0;
             for(var numberOfEntries = 0;numberOfEntries < data[0].length;numberOfEntries++) {
                 //console.log(data[0][numberOfEntries][1]);
                 if(data[0][numberOfEntries][1]< 0) {
-                    dataNegatives = true;
+                    dataNegativesFound = true;
                     if(data[0][numberOfEntries][1] < data[0][lowestNegativePos][1]) {
                         // Get lowest val
                         lowestNegativePos = numberOfEntries;
@@ -242,10 +246,10 @@ var radiansOn = false;
                     }
                 }
             }
+
             //console.log("Test for negatives "  + dataNegatives);
             //console.log("Lowest neg " +  data[0][lowestNegativePos][1]);
             //console.log(data);
-            
             var angularScale = geometryConfig.angularScale;
             var domainMin = geometryConfig.radialScale.domain()[0];
             var generator = {};
@@ -263,7 +267,6 @@ var radiansOn = false;
                 });
             };
             generator.dot = function(d, i, pI) {
-                //console.log("DOT");
                 dataIndex = i;
                 var stackedData = d[2] ? [ d[0], d[1] + d[2] ] : d;
                 var symbol = d3.svg.symbol().size(_config[pI].data.dotSize).type(_config[pI].data.dotType)(d, i);
@@ -271,10 +274,8 @@ var radiansOn = false;
                     'class': 'mark dot',
                     d: symbol,
                     transform: function(d, dataIndex) {
-                        //console.log(d);
-                        //console.log(i);
-                        polarCoords = getPolarCoordinates(stackedData,0);
-                        if(dataNegatives) {
+                        polarCoords = getPolarCoordinates(stackedData,0,geometryConfig);
+                        if(dataNegativesFound) {
                             if(i == lowestNegativePos){
                             }
                             if(d[1]< 0){
@@ -299,40 +300,21 @@ var radiansOn = false;
             //console.log(getPolarCoordinates([180,0.5],0));
             //console.log(geometryConfig.radialScale(-1));
             //console.log("TESTS CONT>>>");
-            var polarMove = 0;
-            if(dataNegatives) {
-                var polarMove = getPolarCoordinates([data[0][lowestNegativePos][0],data[0][lowestNegativePos][1]],0).r;
-            }
-            //console.log("Polar Move " +polarMove);
             // Create Ratio
-            if(dataNegatives) {
-                var ratioTotal = Math.abs(data[0][lowestNegativePos][1]) + data[0][highestPos][1];
-                var ratioSteps = 1/ratioTotal;
-                var ratioCreator = Math.abs(data[0][lowestNegativePos][1])*ratioSteps;
-                var locationRatio = 1;
-                if( Math.abs(data[0][lowestNegativePos][1]) > data[0][highestPos][1]) {
-                    locationRatio = 1 + ratioCreator;
-                    var zeroLoc = 90*locationRatio;
-                }else {
-                    locationRatio = 1 - ratioCreator;
-                    var zeroLoc = 180-(180*locationRatio);
-                }
-                //var zeroLoc = 90*locationRatio;
-                //console.log("ratioTotal " + ratioTotal);
-                //console.log("ratioSteps " + ratioSteps);
-                //console.log("data[0][highestPos][1] " + data[0][highestPos][1]);
-                //console.log("Math.abs(data[0][lowestNegativePos][1]) " + Math.abs(data[0][lowestNegativePos][1]));
-                //console.log("ratioCreator " + ratioCreator);
-                //console.log("locationRatio " + locationRatio);
-                //console.log("ZERO LOC " + zeroLoc);
+            if(dataNegativesFound) {
+                results = moveOrigin(data, lowestNegativePos, highestPos,geometryConfig);
+                var polarMove = results[0];
+                var locationRatio = results[1];
+                var zeroLoc = results[2];
+
+                zeroLocation = zeroLoc;
+                zeroRatio = locationRatio;
+                polarMoved = polarMove;
             }
-           
-
-
-
+            
             var line = d3.svg.line.radial().interpolate(_config[0].data.lineInterpolation).radius(function(d) {
                 var val = geometryConfig.radialScale(Math.abs(d[1]));
-                if(dataNegatives) {
+                if(dataNegativesFound) {
                     if(d[1]< 0){
                         //console.log("HEY OVER HERE");
                         //console.log("POLAR MOVE " + polarMove);
@@ -344,7 +326,6 @@ var radiansOn = false;
                         if(d[1]<Math.abs(data[0][lowestNegativePos][1])) {
                             val = polarMove + val
                             val = val *locationRatio;
-                        
                         }
                     }
                 }
@@ -453,22 +434,6 @@ var radiansOn = false;
             geometry.style(markStyle).each(generator[geometryConfig.geometryType]);
             geometry.exit().remove();
             geometryLayer.exit().remove();
-            function getPolarCoordinates(d, i) {
-                var r = geometryConfig.radialScale(Math.abs(d[1]));
-                var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
-                return {
-                    r: r,
-                    t: t
-                };
-            }
-            function convertToCartesian(polarCoordinates) {
-                var x = polarCoordinates.r * Math.cos(polarCoordinates.t);
-                var y = polarCoordinates.r * Math.sin(polarCoordinates.t);
-                return {
-                    x: x,
-                    y: y
-                };
-            }
         });
     }
     exports.config = function(_x) {
@@ -574,7 +539,6 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
                 }
             )
         })();
-
         legendBBox = legendContainer.node().getBBox();
         radius = Math.min(axisConfig.width - legendBBox.width - axisConfig.margin.left - axisConfig.margin.right, axisConfig.height - axisConfig.margin.top - axisConfig.margin.bottom) / 2;
         radius = Math.max(10, radius);
@@ -672,32 +636,11 @@ function assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCe
 }
 
 function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
+
     var radialAxis = svg.select('.radial.axis-group');
     if (axisConfig.radialAxis.gridLinesVisible) {
-        //get heighest and lowest value
-        highestVal = 0;
-        lowestVal =0;
-        for(var numberOfData = 0;numberOfData<plotData.length;numberOfData++){
-            for(var counter = 0;counter<plotData[numberOfData].r[0].length;counter++){
-                if(plotData[numberOfData].r[0][counter] > highestVal) {
-                    highestVal = plotData[numberOfData].r[0][counter]; 
-                }
-                if(plotData[numberOfData].r[0][counter] < lowestVal) {
-                    lowestVal = plotData[numberOfData].r[0][counter]; 
-                }
-            }
-        }
-        var steps = 5;
-        var interval = (highestVal - lowestVal)/steps;
-        var values = [lowestVal];
-        for(var count = 1; count <= steps;count++){
-            values.push(lowestVal+(interval*count));
-        }
-        console.log((radialScale).ticks(5));
-        //var replace = [0, 1, 2, 3, 4, 5, 6];
-        //replace[0] = -6;
+        //console.log((radialScale).ticks(5) + " RadialScale");
         var gridCircles = radialAxis.selectAll('circle.grid-circle').data((radialScale).ticks(5));
-        console.log(gridCircles);
         gridCircles.enter().append('circle').attr({
             'class': 'grid-circle'
         }).style(lineStyle);
@@ -727,41 +670,28 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         }
 
         radialAxis.selectAll('.domain').style(lineStyle);
-        
         // Test for negatives 
         var dataNegatives = false;
-        var highestVal = 0;
+        var scaleValues = (radialScale).ticks(5);
+        var highestVal = scaleValues[scaleValues.length-1];
         var lowestVal =0;
         var negativeAxis = [];
-        console.log(plotData)
 
-        for(var numberOfData = 0;numberOfData<plotData.length;numberOfData++){
-            for(var counter = 0;counter<plotData[numberOfData].r[0].length;counter++){
-                if(plotData[numberOfData].r[0][counter] > highestVal) {
-                    highestVal = plotData[numberOfData].r[0][counter]; 
-                }
-                if(plotData[numberOfData].r[0][counter] < lowestVal) {
-                    lowestVal = plotData[numberOfData].r[0][counter]; 
-                }
-                if(plotData[numberOfData].r[0][counter]< 0 ) {
-                    dataNegatives = true;
-                }
-            }
-        }
+        var metaData = getMetaData(plotData);
+        dataNegatives = metaData[0];
+        lowestVal = metaData[2];
 
         if(dataNegatives) {
-            var steps = 5;
+            var steps = (radialScale).ticks(5).length -1;
             var interval = (Math.abs(highestVal) - lowestVal)/steps;
             negativeAxis = [lowestVal];
             for(var count = 1; count <= steps;count++){
                 negativeAxis.push((lowestVal+(interval*count)).toPrecision(2));
             }
         }
-        console.log(negativeAxis);
-
 
         radialAxis.selectAll('g>text').text(function(d, i) {
-            console.log(i);
+            //console.log(i);
             if(dataNegatives) {
                 return negativeAxis[i] + axisConfig.radialAxis.ticksSuffix;
             }
@@ -786,6 +716,31 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         });
     }
     return [radialAxis,backgroundCircle]
+}
+
+function getMetaData(plotData){
+    var dataNegatives = false;
+    var highestVal = 0;
+    var highestValPos = 0;
+    var lowestVal =0;
+    var lowestValPos =0;
+    //data[0][lowestNegativePos][0]
+    for(var numberOfData = 0;numberOfData<plotData.length;numberOfData++){
+        for(var counter = 0;counter<plotData[numberOfData].r[0].length;counter++){
+            if(plotData[numberOfData].r[0][counter] > highestVal) {
+                highestVal = plotData[numberOfData].r[0][counter];
+                highestValPos = numberOfData;
+            }
+            if(plotData[numberOfData].r[0][counter] < lowestVal) {
+                lowestVal = plotData[numberOfData].r[0][counter];
+                lowestValPos = lowestValPos;
+            }
+            if(plotData[numberOfData].r[0][counter]< 0 ) {
+                dataNegatives = true;
+            }
+        }
+    }
+    return [dataNegatives, highestVal, lowestVal]
 }
 
 function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup){
@@ -916,10 +871,8 @@ function assignGeometryContainerAttributes(geometryContainer, data, radialScale,
         rs = [];
         rt = [];
         for(var counter = 0;counter<data[numberOfData].r[0].length;counter++){
-            //if(data[numberOfData].r[0][counter]*scale<= getMaxVal){
-                rs.push(data[numberOfData].r[0][counter]*scale);
-                rt.push(data[numberOfData].t[0][counter]);
-            //}
+            rs.push(data[numberOfData].r[0][counter]*scale);
+            rt.push(data[numberOfData].t[0][counter]);
         }
         data[numberOfData].r[0] = rs;
         data[numberOfData].t[0] = rt;
@@ -1055,7 +1008,7 @@ function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
     });
 }
 
-function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip){
+function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip,data){
     chartGroup.on('mousemove.radial-guide', function(d, i) {
         var r = utility.getMousePos(backgroundCircle).radius;
         angularGuideCircle.attr({
@@ -1065,6 +1018,23 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
         });
         radialValue = radialScale.invert(utility.getMousePos(backgroundCircle).radius);
         var pos = utility.convertToCartesian(r, axisConfig.radialAxis.orientation);
+        var polarCoordRadius = utility.getMousePos(backgroundCircle).radius;
+        var metaData = getMetaData(data);
+        var dataNegatives = metaData[0];
+
+        if(dataNegatives){
+            if(polarCoordRadius < zeroLocation){
+                polarCoordRadius = polarCoordRadius /zeroRatio;
+                polarCoordRadius = polarCoordRadius - polarMoved;
+            }else{
+                if(radialScale.invert(polarCoordRadius)<lowestPolar) {
+                    polarCoordRadius = polarCoordRadius /zeroRatio;
+                    polarCoordRadius = polarCoordRadius - polarMoved;
+                }
+            }
+            radialValue = radialScale.invert(polarCoordRadius);
+        }
+        // Display value 
         radialTooltip.text(utility.round(radialValue)).move([ pos[0] + chartCenter[0], pos[1] + chartCenter[1] ]);
     }).on('mouseout.radial-guide', function(d, i) {
         angularGuideCircle.style({
@@ -1239,6 +1209,48 @@ function getAngleLabels(d, i, axisConfig){
         });
     }
     return addtionalLabels
+}
+function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig){
+    var geometryConfigx = geometryConfig;
+    var polarMove = getPolarCoordinates([data[0][lowestNegativePos][0],data[0][lowestNegativePos][1]],0,geometryConfigx).r;
+    lowestPolar = Math.abs(data[0][lowestNegativePos][1])
+    var ratioTotal = Math.abs(data[0][lowestNegativePos][1]) + data[0][highestPos][1];
+    var ratioSteps = 1/ratioTotal;
+    var ratioCreator = Math.abs(data[0][lowestNegativePos][1])*ratioSteps;
+    var locationRatio = 1;
+    if( Math.abs(data[0][lowestNegativePos][1]) > data[0][highestPos][1]) {
+        locationRatio = 1 + ratioCreator;
+        var zeroLoc = 90*locationRatio;
+    }else {
+        locationRatio = 1 - ratioCreator;
+        var zeroLoc = 180-(180*locationRatio);
+    }
+    return[polarMove, locationRatio, zeroLoc]
+    //var zeroLoc = 90*locationRatio;
+    //console.log("ratioTotal " + ratioTotal);
+    //console.log("ratioSteps " + ratioSteps);
+    //console.log("data[0][highestPos][1] " + data[0][highestPos][1]);
+    //console.log("Math.abs(data[0][lowestNegativePos][1]) " + Math.abs(data[0][lowestNegativePos][1]));
+    //console.log("ratioCreator " + ratioCreator);
+   // console.log("locationRatio " + locationRatio);
+   // console.log("ZERO LOC " + zeroLoc);
+}
+function getPolarCoordinates(d, i, geometryConfig) {
+    var r = geometryConfig.radialScale(Math.abs(d[1]));
+    var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
+    return {
+        r: r,
+        t: t
+    };
+}
+
+function convertToCartesian(polarCoordinates) {
+    var x = polarCoordinates.r * Math.cos(polarCoordinates.t);
+    var y = polarCoordinates.r * Math.sin(polarCoordinates.t);
+    return {
+        x: x,
+        y: y
+    };
 }
 
 
