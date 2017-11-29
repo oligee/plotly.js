@@ -13,6 +13,7 @@ var defaults = require('./defaults');
 var utility = require('./utility');
 var tooltip= require('./tooltip');
 var legend= require('./legend');
+var plotExports = require('./polarPlotter');
 var extendDeepAll = Lib.extendDeepAll;
 var MID_SHIFT = require('../../constants/alignment').MID_SHIFT;
 var µ = module.exports = { version: '0.2.2' };
@@ -21,6 +22,7 @@ var zeroLocation = 0;
 var polarMoved = 0;
 var zeroRatio =0;
 var lowestPolar =0;
+var polarTypeLine = false;
 // Render the Polar Plot
 µ.Axis = function module(){
     var config = {data: [],layout: {}}, inputConfig = {}, liveConfig = {};
@@ -212,229 +214,221 @@ var lowestPolar =0;
 µ.PolyChart = function module() {
     var config = [ µ.PolyChart.defaultConfig() ];
     var dispatch = d3.dispatch('hover');
-    var dashArray = {
-        solid: 'none',
-        dash: [ 5, 2 ],
-        dot: [ 2, 5 ]
-    };
+
     var colorScale;
     function exports() {
-        var geometryConfig = config[0].geometryConfig;
-        var container = geometryConfig.container;
-        if (typeof container == 'string') container = d3.select(container);
-        container.datum(config).each(function(_config, _index) {
-            var isStack = !!_config[0].data.yStack;
-            var data = _config.map(function(d, i) {
-                if (isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
-            });
-            // Test for negatives 
-            var dataNegativesFound = false;
-            var lowestNegativePos = 0;
-            var highestPos = 0;
-            for(var numberOfEntries = 0;numberOfEntries < data[0].length;numberOfEntries++) {
-                //console.log(data[0][numberOfEntries][1]);
-                if(data[0][numberOfEntries][1]< 0) {
-                    dataNegativesFound = true;
-                    if(data[0][numberOfEntries][1] < data[0][lowestNegativePos][1]) {
-                        // Get lowest val
-                        lowestNegativePos = numberOfEntries;
-                    }
-                }else{
-                    if(data[0][numberOfEntries][1] > data[0][highestPos][1]) {
-                        // Get highest val
-                        highestPos = numberOfEntries;
-                    }
-                }
-            }
+        var dashArray = {
+            solid: 'none',
+            dash: [ 5, 2 ],
+            dot: [ 2, 5 ]
+        };
+        plotExports.exportPlots(config, dashArray);
+        // var geometryConfig = config[0].geometryConfig;
+        // var container = geometryConfig.container;
+        // if (typeof container == 'string') container = d3.select(container);
+        // container.datum(config).each(function(_config, _index) {
+        //     var isStack = !!_config[0].data.yStack;
+        //     var data = _config.map(function(d, i) {
+        //         if (isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
+        //     });
 
-            //console.log("Test for negatives "  + dataNegatives);
-            //console.log("Lowest neg " +  data[0][lowestNegativePos][1]);
-            //console.log(data);
-            var angularScale = geometryConfig.angularScale;
-            var domainMin = geometryConfig.radialScale.domain()[0];
-            var generator = {};
-            generator.bar = function(d, i, pI) {
-                var dataConfig = _config[pI].data;
-                var h = geometryConfig.radialScale(d[1]) - geometryConfig.radialScale(0);
-                var stackTop = geometryConfig.radialScale(d[2] || 0);
-                var w = dataConfig.barWidth;
-                d3.select(this).attr({
-                    'class': 'mark bar',
-                    d: 'M' + [ [ h + stackTop, -w / 2 ], [ h + stackTop, w / 2 ], [ stackTop, w / 2 ], [ stackTop, -w / 2 ] ].join('L') + 'Z',
-                    transform: function(d, i) {
-                        return 'rotate(' + (geometryConfig.orientation + angularScale(d[0])) + ')';
-                    }
-                });
-            };
-            generator.dot = function(d, i, pI) {
-                dataIndex = i;
-                var stackedData = d[2] ? [ d[0], d[1] + d[2] ] : d;
-                var symbol = d3.svg.symbol().size(_config[pI].data.dotSize).type(_config[pI].data.dotType)(d, i);
-                d3.select(this).attr({
-                    'class': 'mark dot',
-                    d: symbol,
-                    transform: function(d, dataIndex) {
-                        polarCoords = getPolarCoordinates(stackedData,0,geometryConfig);
-                        if(dataNegativesFound) {
-                            if(i == lowestNegativePos){
-                            }
-                            if(d[1]< 0){
-                                polarCoords.r = polarMove - polarCoords.r
-                                polarCoords.r = polarCoords.r *locationRatio;
-                            }else{
-                                if(d[1]<Math.abs(data[0][lowestNegativePos][1])) {
-                                    polarCoords.r = polarMove + polarCoords.r
-                                    polarCoords.r = polarCoords.r *locationRatio;
-                                
-                                }
-                            }
-                        }
-                        
-                        //console.log(polarCoords);
-                        var coord = convertToCartesian(polarCoords);
-                        return 'translate(' + [ coord.x, coord.y ] + ')';
-                    }
-                });
-            };
-            //console.log("TESTING");
-            //console.log(getPolarCoordinates([180,0.5],0));
-            //console.log(geometryConfig.radialScale(-1));
-            //console.log("TESTS CONT>>>");
-            // Create Ratio
-            if(dataNegativesFound) {
-                results = moveOrigin(data, lowestNegativePos, highestPos,geometryConfig);
-                var polarMove = results[0];
-                var locationRatio = results[1];
-                var zeroLoc = results[2];
+        //     // Test for negatives 
+        //     var dataNegativesFound = false;
+        //     var lowestNegativePos = 0;
+        //     var highestPos = 0;
+        //     for(var numberOfEntries = 0;numberOfEntries < data[0].length;numberOfEntries++) {
+        //         if(data[0][numberOfEntries][1]< 0) {
+        //             dataNegativesFound = true;
+        //             if(data[0][numberOfEntries][1] < data[0][lowestNegativePos][1]) {
+        //                 // Get lowest val
+        //                 lowestNegativePos = numberOfEntries;
+        //             }
+        //         }else{
+        //             if(data[0][numberOfEntries][1] > data[0][highestPos][1]) {
+        //                 // Get highest val
+        //                 highestPos = numberOfEntries;
+        //             }
+        //         }
+        //     }
 
-                zeroLocation = zeroLoc;
-                zeroRatio = locationRatio;
-                polarMoved = polarMove;
-            }
+        //     var angularScale = geometryConfig.angularScale;
+        //     var domainMin = geometryConfig.radialScale.domain()[0];
+        //     var generator = {};
+        //     polarTypeLine = false;
+        //     var PolarRCap = 180;
+
+        //     generator.bar = function(d, i, pI) {
+        //         var dataConfig = _config[pI].data;
+        //         var h = geometryConfig.radialScale(d[1]) - geometryConfig.radialScale(0);
+        //         var stackTop = geometryConfig.radialScale(d[2] || 0);
+        //         var w = dataConfig.barWidth;
+        //         d3.select(this).attr({
+        //             'class': 'mark bar',
+        //             d: 'M' + [ [ h + stackTop, -w / 2 ], [ h + stackTop, w / 2 ], [ stackTop, w / 2 ], [ stackTop, -w / 2 ] ].join('L') + 'Z',
+        //             transform: function(d, i) {
+        //                 return 'rotate(' + (geometryConfig.orientation + angularScale(d[0])) + ')';
+        //             }
+        //         });
+        //     };
+        //     generator.dot = function(d, i, pI) {
+
+        //         dataIndex = i;
+        //         var stackedData = d[2] ? [ d[0], d[1] + d[2] ] : d;
+        //         var symbol = d3.svg.symbol().size(_config[pI].data.dotSize).type(_config[pI].data.dotType)(d, i);
+        //         d3.select(this).attr({'class': 'mark dot',d: symbol,transform: function(d, dataIndex) {
+        //                 // Get polar coordinates so they can be manipulated/converted into cartesian coords
+        //                 polarCoords = getPolarCoordinates(stackedData,0,geometryConfig);
+        //                 // If negatives are found, scaling needs to occure alosngside ploting a new origin center
+        //                 polarCoords.r = polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, PolarRCap, polarMove,  d, polarTypeLine,zeroLoc)
+        //                 var coord = convertToCartesian(polarCoords);
+        //                 return 'translate(' + [ coord.x, coord.y ] + ')';
+        //             }
+        //         });
+        //     };
+        //     // Create Ratio
+        //     if(dataNegativesFound) {
+        //         results = moveOrigin(data, lowestNegativePos, highestPos,geometryConfig);
+        //         var polarMove = results[0];
+        //         var locationRatio = results[1];
+        //         var zeroLoc = results[2];
+
+        //         zeroLocation = zeroLoc;
+        //         zeroRatio = locationRatio;
+        //         polarMoved = polarMove;
+        //     }
             
-            var line = d3.svg.line.radial().interpolate(_config[0].data.lineInterpolation).radius(function(d) {
-                var val = geometryConfig.radialScale(Math.abs(d[1]));
-                if(dataNegativesFound) {
-                    if(d[1]< 0){
-                        //console.log("HEY OVER HERE");
-                        //console.log("POLAR MOVE " + polarMove);
-                        //console.log("val " + val);
-                        //console.log("locationRatio " + locationRatio);
-                        val = polarMove - val
-                        val = val *locationRatio;
-                    }else{
-                        if(d[1]<Math.abs(data[0][lowestNegativePos][1])) {
-                            val = polarMove + val
-                            val = val *locationRatio;
-                        }
-                    }
-                }
-                //console.log(val);
-                return val;
-            }).angle(function(d) {
-                return geometryConfig.angularScale(d[0]) * Math.PI / 180;
+        //     var line = d3.svg.line.radial().interpolate(_config[0].data.lineInterpolation).radius(function(d) {
+        //         var val = geometryConfig.radialScale(Math.abs(d[1]));
+        //         if(dataNegativesFound) {
+        //             if(locationRatio>1){
+        //                 // Normlise the points because of the largest negative extremity
+        //                 val = val*(PolarRCap/polarMove);
+        //             }
+        //             if(d[1]< 0){
+        //                 if(locationRatio>1){
+        //                     val = PolarRCap - val;
+        //                     val = val*(zeroLoc/PolarRCap);
+        //                 }else{
+        //                     val = polarMove - val;
+        //                     val = val *locationRatio;
+        //                 }  
+        //             }else{
+        //                 if(locationRatio>1){
+        //                     val = PolarRCap + val;
+        //                     val = val*(zeroLoc/PolarRCap);
+        //                 }else{
+        //                     val = polarMove + val;
+        //                     val = val *locationRatio;
+        //                 }
+        //             }
+        //         }
+        //         //console.log("plot line after : ", val);
+        //         return val;
+        //     }).angle(function(d) {
+        //         return geometryConfig.angularScale(d[0]) * Math.PI / 180;
                 
-            });
-            generator.line = function(d, i, pI) {
-                var lineData = d[2] ? data[pI].map(function(d, i) {
-                    return [ d[0], d[1] + d[2] ];
-                }) : data[pI];
-                //console.log(lineData);
-                d3.select(this).each(generator['dot']).style({
-                    opacity: function(dB, iB) {
-                        return +_config[pI].data.dotVisible;
-                    },
-                    fill: markStyle.stroke(d, i, pI)
-                }).attr({
-                    'class': 'mark dot'
-                });
-                if (i > 0) return;
-                    var lineSelection = d3.select(this.parentNode).selectAll('path.line').data([ 0 ]);
-                    lineSelection.enter().insert('path');
-                    lineSelection.attr({
-                        'class': 'line',
-                        d: line(lineData),
-                        transform: function(dB, iB) {
-                            return 'rotate(' + (geometryConfig.orientation + 90) + ')';
-                        },
-                        'pointer-events': 'none'
-                    }).style({
-                        fill: function(dB, iB) {
-                            return markStyle.fill(d, i, pI);
-                        },
-                        'fill-opacity': 0,
-                        stroke: function(dB, iB) {
-                            return markStyle.stroke(d, i, pI);
-                        },
-                        'stroke-width': function(dB, iB) {
-                            return markStyle['stroke-width'](d, i, pI);
-                        },
-                        'stroke-dasharray': function(dB, iB) {
-                            return markStyle['stroke-dasharray'](d, i, pI);
-                        },
-                        opacity: function(dB, iB) {
-                            return markStyle.opacity(d, i, pI);
-                        },
-                        display: function(dB, iB) {
-                            return markStyle.display(d, i, pI);
-                        }
-                    });
-            };
-            var angularRange = geometryConfig.angularScale.range();
-            var triangleAngle = Math.abs(angularRange[1] - angularRange[0]) / data[0].length * Math.PI / 180;
-            var arc = d3.svg.arc().startAngle(function(d) {
-                return -triangleAngle / 2;
-            }).endAngle(function(d) {
-                return triangleAngle / 2;
-            }).innerRadius(function(d) {
-                return geometryConfig.radialScale(domainMin + (d[2] || 0));
-            }).outerRadius(function(d) {
-                return geometryConfig.radialScale(domainMin + (d[2] || 0)) + geometryConfig.radialScale(d[1]);
-            });
-            generator.arc = function(d, i, pI) {
-                d3.select(this).attr({
-                    'class': 'mark arc',
-                    d: arc,
-                    transform: function(d, i) {
-                        return 'rotate(' + (geometryConfig.orientation + angularScale(d[0]) + 90) + ')';
-                    }
-                });
-            };
-            var markStyle = {
-                fill: function(d, i, pI) {
-                    return _config[pI].data.color;
-                },
-                stroke: function(d, i, pI) {
-                    return _config[pI].data.strokeColor;
-                },
-                'stroke-width': function(d, i, pI) {
-                    return _config[pI].data.strokeSize + 'px';
-                },
-                'stroke-dasharray': function(d, i, pI) {
-                    return dashArray[_config[pI].data.strokeDash];
-                },
-                opacity: function(d, i, pI) {
-                    return _config[pI].data.opacity;
-                },
-                display: function(d, i, pI) {
-                    return typeof _config[pI].data.visible === 'undefined' || _config[pI].data.visible ? 'block' : 'none';
-                }
-            };
-            var geometryLayer = d3.select(this).selectAll('g.layer').data(data);
-            geometryLayer.enter().append('g').attr({
-                'class': 'layer'
-            });
-            var geometry = geometryLayer.selectAll('path.mark').data(function(d, i) {
-                return d;
-            });
-            geometry.enter().append('path').attr({
-                'class': 'mark'
-            });
+        //     });
+        //     generator.line = function(d, i, pI) {
+        //         console.log("first");
+        //         polarTypeLine = true;
+        //         var lineData = d[2] ? data[pI].map(function(d, i) {
+        //             return [ d[0], d[1] + d[2] ];
+        //         }) : data[pI];
+        //         d3.select(this).each(generator['dot']).style({
+        //             opacity: function(dB, iB) {
+        //                 return +_config[pI].data.dotVisible;
+        //             },
+        //             fill: markStyle.stroke(d, i, pI)
+        //         }).attr({
+        //             'class': 'mark dot'
+        //         });
+        //         if (i > 0) return;
+        //             var lineSelection = d3.select(this.parentNode).selectAll('path.line').data([ 0 ]);
+        //             lineSelection.enter().insert('path');
+        //             lineSelection.attr({
+        //                 'class': 'line',
+        //                 d: line(lineData),
+        //                 transform: function(dB, iB) {
+        //                     return 'rotate(' + (geometryConfig.orientation + 90) + ')';
+        //                 },
+        //                 'pointer-events': 'none'
+        //             }).style({
+        //                 fill: function(dB, iB) {
+        //                     return markStyle.fill(d, i, pI);
+        //                 },
+        //                 'fill-opacity': 0,
+        //                 stroke: function(dB, iB) {
+        //                     return markStyle.stroke(d, i, pI);
+        //                 },
+        //                 'stroke-width': function(dB, iB) {
+        //                     return markStyle['stroke-width'](d, i, pI);
+        //                 },
+        //                 'stroke-dasharray': function(dB, iB) {
+        //                     return markStyle['stroke-dasharray'](d, i, pI);
+        //                 },
+        //                 opacity: function(dB, iB) {
+        //                     return markStyle.opacity(d, i, pI);
+        //                 },
+        //                 display: function(dB, iB) {
+        //                     return markStyle.display(d, i, pI);
+        //                 }
+        //             });
+        //     };
+        //     var angularRange = geometryConfig.angularScale.range();
+        //     var triangleAngle = Math.abs(angularRange[1] - angularRange[0]) / data[0].length * Math.PI / 180;
+        //     var arc = d3.svg.arc().startAngle(function(d) {
+        //         return -triangleAngle / 2;
+        //     }).endAngle(function(d) {
+        //         return triangleAngle / 2;
+        //     }).innerRadius(function(d) {
+        //         return geometryConfig.radialScale(domainMin + (d[2] || 0));
+        //     }).outerRadius(function(d) {
+        //         return geometryConfig.radialScale(domainMin + (d[2] || 0)) + geometryConfig.radialScale(d[1]);
+        //     });
+        //     generator.arc = function(d, i, pI) {
+        //         d3.select(this).attr({
+        //             'class': 'mark arc',
+        //             d: arc,
+        //             transform: function(d, i) {
+        //                 return 'rotate(' + (geometryConfig.orientation + angularScale(d[0]) + 90) + ')';
+        //             }
+        //         });
+        //     };
+        //     var markStyle = {
+        //         fill: function(d, i, pI) {
+        //             return _config[pI].data.color;
+        //         },
+        //         stroke: function(d, i, pI) {
+        //             return _config[pI].data.strokeColor;
+        //         },
+        //         'stroke-width': function(d, i, pI) {
+        //             return _config[pI].data.strokeSize + 'px';
+        //         },
+        //         'stroke-dasharray': function(d, i, pI) {
+        //             return dashArray[_config[pI].data.strokeDash];
+        //         },
+        //         opacity: function(d, i, pI) {
+        //             return _config[pI].data.opacity;
+        //         },
+        //         display: function(d, i, pI) {
+        //             return typeof _config[pI].data.visible === 'undefined' || _config[pI].data.visible ? 'block' : 'none';
+        //         }
+        //     };
+        //     var geometryLayer = d3.select(this).selectAll('g.layer').data(data);
+        //     geometryLayer.enter().append('g').attr({
+        //         'class': 'layer'
+        //     });
+        //     var geometry = geometryLayer.selectAll('path.mark').data(function(d, i) {
+        //         return d;
+        //     });
+        //     geometry.enter().append('path').attr({
+        //         'class': 'mark'
+        //     });
             
-            geometry.style(markStyle).each(generator[geometryConfig.geometryType]);
-            geometry.exit().remove();
-            geometryLayer.exit().remove();
-        });
+        //     geometry.style(markStyle).each(generator[geometryConfig.geometryType]);
+        //     geometry.exit().remove();
+        //     geometryLayer.exit().remove();
+        // });
     }
     exports.config = function(_x) {
         if (!arguments.length) return config;
@@ -689,13 +683,10 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
                 negativeAxis.push((lowestVal+(interval*count)).toPrecision(2));
             }
         }
-
         radialAxis.selectAll('g>text').text(function(d, i) {
-            //console.log(i);
             if(dataNegatives) {
                 return negativeAxis[i] + axisConfig.radialAxis.ticksSuffix;
             }
-
             // deal with negative changes
             return this.textContent + axisConfig.radialAxis.ticksSuffix;
         }).style(fontStyle).style({
@@ -1008,7 +999,7 @@ function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
     });
 }
 
-function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip,data){
+function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip,data) {
     chartGroup.on('mousemove.radial-guide', function(d, i) {
         var r = utility.getMousePos(backgroundCircle).radius;
         angularGuideCircle.attr({
@@ -1021,19 +1012,10 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
         var polarCoordRadius = utility.getMousePos(backgroundCircle).radius;
         var metaData = getMetaData(data);
         var dataNegatives = metaData[0];
-
-        if(dataNegatives){
-            if(polarCoordRadius < zeroLocation){
-                polarCoordRadius = polarCoordRadius /zeroRatio;
-                polarCoordRadius = polarCoordRadius - polarMoved;
-            }else{
-                if(radialScale.invert(polarCoordRadius)<lowestPolar) {
-                    polarCoordRadius = polarCoordRadius /zeroRatio;
-                    polarCoordRadius = polarCoordRadius - polarMoved;
-                }
-            }
-            radialValue = radialScale.invert(polarCoordRadius);
-        }
+        var polarRCap = 180;
+        // Invert the polar shift due to the negative values
+        polarCoordRadius =  invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, polarTypeLine, polarMoved);
+        radialValue = radialScale.invert(polarCoordRadius);
         // Display value 
         radialTooltip.text(utility.round(radialValue)).move([ pos[0] + chartCenter[0], pos[1] + chartCenter[1] ]);
     }).on('mouseout.radial-guide', function(d, i) {
@@ -1045,6 +1027,40 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
         radialTooltip.hide();
     });
     return chartGroup
+}
+
+function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, PolarTypeLine, polarMoved){
+    if(dataNegatives){
+        if(polarCoordRadius < zeroLocation){
+            if(zeroRatio>1){
+                polarCoordRadius = polarCoordRadius/(zeroLocation/polarRCap);
+                polarCoordRadius = polarRCap - polarCoordRadius;
+            }else{
+                if(PolarTypeLine){
+                    polarCoordRadius = polarCoordRadius /zeroRatio;
+                }
+                polarCoordRadius = polarMoved - polarCoordRadius;
+            }
+            polarCoordRadius = polarCoordRadius * -1;
+        }else{
+            if(zeroRatio>1){
+                polarCoordRadius = polarCoordRadius/(zeroLocation/polarRCap);
+                polarCoordRadius = polarCoordRadius - polarRCap;
+                if(!PolarTypeLine){
+                    polarCoordRadius = polarCoordRadius /zeroRatio;
+                }
+            }else{
+                polarCoordRadius = polarCoordRadius /zeroRatio;
+                polarCoordRadius = polarCoordRadius - polarMoved;
+            }
+        }
+        if(zeroRatio>1){
+            // Normlise the points because of the largest negative extremity
+            polarCoordRadius = polarCoordRadius/(polarRCap/polarMoved);
+        }
+       
+    }
+    return polarCoordRadius;
 }
 
 function addSegementDividers(dataOriginal, axisConfig, liveConfig){
@@ -1219,22 +1235,15 @@ function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig){
     var ratioCreator = Math.abs(data[0][lowestNegativePos][1])*ratioSteps;
     var locationRatio = 1;
     if( Math.abs(data[0][lowestNegativePos][1]) > data[0][highestPos][1]) {
-        locationRatio = 1 + ratioCreator;
+        locationRatio = 1 + (ratioCreator-0.5);
         var zeroLoc = 90*locationRatio;
     }else {
         locationRatio = 1 - ratioCreator;
         var zeroLoc = 180-(180*locationRatio);
     }
     return[polarMove, locationRatio, zeroLoc]
-    //var zeroLoc = 90*locationRatio;
-    //console.log("ratioTotal " + ratioTotal);
-    //console.log("ratioSteps " + ratioSteps);
-    //console.log("data[0][highestPos][1] " + data[0][highestPos][1]);
-    //console.log("Math.abs(data[0][lowestNegativePos][1]) " + Math.abs(data[0][lowestNegativePos][1]));
-    //console.log("ratioCreator " + ratioCreator);
-   // console.log("locationRatio " + locationRatio);
-   // console.log("ZERO LOC " + zeroLoc);
 }
+
 function getPolarCoordinates(d, i, geometryConfig) {
     var r = geometryConfig.radialScale(Math.abs(d[1]));
     var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
@@ -1251,6 +1260,41 @@ function convertToCartesian(polarCoordinates) {
         x: x,
         y: y
     };
+}
+
+function polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarRCap, polarMove,  d, polarTypeLine, zeroLoc) {
+    if(dataNegativesFound) {
+        // Are we dealing with the case in which our largest absolute value is negative
+        // This results in the zero point being moved to a value greater than 90
+        if(locationRatio>1){
+            // Normlise the points because of the largest negative extremity
+            polarCoords.r = polarCoords.r*(polarRCap/polarMove);
+        }
+        if(d[1]< 0){
+        // Deal with negative values, these need reploting and scaling to work around plotly engine
+            if(locationRatio>1){
+                polarCoords.r = polarRCap - polarCoords.r
+                polarCoords.r = polarCoords.r*(zeroLoc/polarRCap);
+            }else{
+                polarCoords.r = polarMove - polarCoords.r
+                if(polarTypeLine){
+                    polarCoords.r = polarCoords.r *locationRatio;
+                }
+            }
+        }else{
+                if(locationRatio>1){
+                    polarCoords.r = polarRCap + polarCoords.r;
+                    polarCoords.r = polarCoords.r*(zeroLoc/polarRCap);
+                    if(!polarTypeLine){
+                        polarCoords.r = polarCoords.r *locationRatio;
+                    }
+                }else{
+                    polarCoords.r = polarMove + polarCoords.r;
+                    polarCoords.r = polarCoords.r *locationRatio;
+                }
+        }
+    }
+    return polarCoords.r;
 }
 
 
