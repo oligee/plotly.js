@@ -13,10 +13,9 @@ var µ = module.exports = { version: '0.2.2' };
 // The Legend is the "key" in the top right of the graph, displaying infomation on the various data on the graph
 // Has the abbility to show and hide data for user ease
 function exportPlots(config, dashArray) {
-    console.log("dashArray", dashArray);
-    console.log("hey");
     var geometryConfig = config[0].geometryConfig;
     var container = geometryConfig.container;
+    var containerData;
     if(typeof container === 'string') container = d3.select(container);
     container.datum(config).each(function(_config) {
         var isStack = !!_config[0].data.yStack;
@@ -58,10 +57,6 @@ function exportPlots(config, dashArray) {
             polarMove = results[0];
             locationRatio = results[1];
             zeroLoc = results[2];
-
-            //zeroLocation = zeroLoc;
-            //zeroRatio = locationRatio;
-            //polarMoved = polarMove;
         }
 
         generator.bar = function(d, i, pI) {
@@ -222,7 +217,9 @@ function exportPlots(config, dashArray) {
         geometry.style(markStyle).each(generator[geometryConfig.geometryType]);
         geometry.exit().remove();
         geometryLayer.exit().remove();
+        containerData = {'zeroLoc': zeroLoc, 'locationRatio': locationRatio, 'polarMove': polarMove, 'polarTypeLine': polarTypeLine};
     });
+    return (containerData);
 }
 
 function polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarRCap, polarMove,  d, polarTypeLine, zeroLoc) {
