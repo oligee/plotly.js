@@ -7,16 +7,18 @@
 */
 'use strict';
 var d3 = require('d3');
-var Lib = require('../../lib');
-var extendDeepAll = Lib.extendDeepAll;
-var µ = module.exports = { version: '0.2.2' };
-// The Legend is the "key" in the top right of the graph, displaying infomation on the various data on the graph
-// Has the abbility to show and hide data for user ease
-function exportPlots(config, dashArray, high, low, dataNegativesFound,axisScaled) {
-    console.log("run");
+function exportPlots(config, dashArray, highestDataValue, lowestDataValue, dataNegativesFound) {
+    // Fucntion contains core plotting data - 
+    // Details the location of the points for scatter, line and area polar graphs.
+    // Deals with negative values through normalising points and repossitioning them in relation to a new orgin location
+    // @params - highestDataValue: used to know the largest point on the graph
+    //         - lowestDataValue: used to know the lowest point on the graph and new origin point
+    //         - dataNegativesFound: used to confirm if dealing with negative values is required
+
     var geometryConfig = config[0].geometryConfig;
     var container = geometryConfig.container;
     var containerData;
+
     if(typeof container === 'string') container = d3.select(container);
     container.datum(config).each(function(_config) {
         var isStack = !!_config[0].data.yStack;
@@ -24,99 +26,62 @@ function exportPlots(config, dashArray, high, low, dataNegativesFound,axisScaled
             if(isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
         });
 
-        //dataNegativesFound = true;
         var angularScale = geometryConfig.angularScale;
         var domainMin = geometryConfig.radialScale.domain()[0];
         var generator = {};
+        // Tracks if chart type is a line graph, as they have different a polar max
+        // Line charts have a max of 170
+        // Scatter charts have a max of 185
+        // Required to relocate the maximum point on the graph when dealing with negative values
         var polarTypeLine = false;
         var polarRCap = 185;
         var polarMove = 0;
         var locationRatio = 0;
         var zeroLoc = 0;
-        // Create Ratio
-
 
         generator.bar = function(d, i, pI) {
-            var dataConfig = _config[pI].data;
-            var h = geometryConfig.radialScale(d[1]) - geometryConfig.radialScale(0);
-            var stackTop = geometryConfig.radialScale(d[2] || 0);
-            var w = dataConfig.barWidth;
-            d3.select(this).attr({
-                'class': 'mark bar',
-                d: 'M' + [ [ h + stackTop, -w / 2 ], [ h + stackTop, w / 2 ], [ stackTop, w / 2 ], [ stackTop, -w / 2 ] ].join('L') + 'Z',
-                transform: function(d) {
-                    return 'rotate(' + (geometryConfig.orientation + angularScale(d[0])) + ')';
-                }
-            });
+            buildBarGraph(d, i, pI, _config, geometryConfig, angularScale);
         };
-        generator.dot = function(d, i, pI) {
 
+        generator.dot = function(d, i, pI) {
+            // Create Ratio
             if(dataNegativesFound) {
-                var results = moveOrigin(data, low, high, geometryConfig,polarRCap);
+                var results = moveOrigin(data, lowestDataValue, highestDataValue, geometryConfig, polarRCap);
                 polarMove = results[0];
                 locationRatio = results[1];
                 zeroLoc = results[2];
             }
-
+            // Build data points coordinates (dot locations)
             var stackedData = d[2] ? [ d[0], d[1] + d[2] ] : d;
             var symbol = d3.svg.symbol().size(_config[pI].data.dotSize).type(_config[pI].data.dotType)(d, i);
             d3.select(this).attr({'class': 'mark dot', d: symbol, transform: function(d) {
-                // Get polar coordinates so they can be manipulated/converted into cartesian coords
-                var polarCoords = getPolarCoordinates(stackedData, 0, geometryConfig);
-                // If negatives are found, scaling needs to occure alosngside ploting a new origin center
-                polarCoords.r = polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarRCap, polarMove, d, polarTypeLine, zeroLoc, geometryConfig, high);
-                var coord = convertToCartesian(polarCoords);
+                var coord = buildDotCoords(stackedData, dataNegativesFound, locationRatio, polarRCap, polarMove, d, polarTypeLine, zeroLoc, geometryConfig, highestDataValue);
                 return 'translate(' + [ coord.x, coord.y ] + ')';
             }
             });
         };
-      
+        
         var line = d3.svg.line.radial().interpolate(_config[0].data.lineInterpolation).radius(function(d) {
-            var val = geometryConfig.radialScale(Math.abs(d[1]));
+            var polarRadiusValue = geometryConfig.radialScale(Math.abs(d[1]));
+            // If negative are found move the polar radius value to deal with an orgin offset
             if(dataNegativesFound) {
-                if(locationRatio > 1) {
-                    // Normlise the points because of the largest negative extremity
-                    val = val * (polarRCap / polarMove);
-                }
-                if(d[1] < 0) {
-                    if(locationRatio > 1) {
-                        val = polarRCap - val;
-                        val = val * (zeroLoc / polarRCap);
-                        val = 170*(val/180);
-                    } else {
-                        val = polarMove - val;
-                        val = val * locationRatio;
-                    }
-                    
-                } else {
-                    if(locationRatio > 1) {
-                        val = polarRCap + val;
-                        val = val * (zeroLoc / polarRCap);
-                        val = 170*(val/180);
-                    } else {
-                        val = polarMove + val;
-                        val = val * locationRatio;
-                    }
-                }
-                //val = 170*(val/180);
+                polarRadiusValue = polarRadiusLineShift(polarRadiusValue, locationRatio, polarMove, polarRCap, zeroLoc, d);
             }
-
-            
-            return val;
+            return polarRadiusValue;
         }).angle(function(d) {
             return geometryConfig.angularScale(d[0]) * Math.PI / 180;
-            
         });
 
         generator.line = function(d, i, pI) {
             polarTypeLine = true;
             polarRCap = 170;
             if(dataNegativesFound) {
-                var results = moveOrigin(data, low, high, geometryConfig, polarRCap);
+                var results = moveOrigin(data, lowestDataValue, highestDataValue, geometryConfig, polarRCap);
                 polarMove = results[0];
                 locationRatio = results[1];
                 zeroLoc = results[2];
             }
+
             var lineData = d[2] ? data[pI].map(function(d) {
                 return [ d[0], d[1] + d[2] ];
             }) : data[pI];
@@ -161,6 +126,7 @@ function exportPlots(config, dashArray, high, low, dataNegativesFound,axisScaled
                 }
             });
         };
+
         var angularRange = geometryConfig.angularScale.range();
         var triangleAngle = Math.abs(angularRange[1] - angularRange[0]) / data[0].length * Math.PI / 180;
         var arc = d3.svg.arc().startAngle(function() {
@@ -172,6 +138,7 @@ function exportPlots(config, dashArray, high, low, dataNegativesFound,axisScaled
         }).outerRadius(function(d) {
             return geometryConfig.radialScale(domainMin + (d[2] || 0)) + geometryConfig.radialScale(d[1]);
         });
+
         generator.arc = function() {
             d3.select(this).attr({
                 'class': 'mark arc',
@@ -223,13 +190,10 @@ function polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarR
     if(dataNegativesFound) {
         // Are we dealing with the case in which our largest absolute value is negative
         // This results in the zero point being moved to a value greater than 90
-
         if(locationRatio > 1) {
             // Normlise the points because of the largest negative extremity
-            //polarCoords.r = polarCoords.r * (polarRCap / (polarMove+180));
-            polarCoords.r = (polarCoords.r/polarMove) * polarRCap;
+            polarCoords.r = (polarCoords.r / polarMove) * polarRCap;
         }
-        //console.log("d ",d," r ",polarCoords.r);
         var axisScaled;
         if(d[1] < 0) {
         // Deal with negative values, these need reploting and scaling to work around plotly engine
@@ -264,17 +228,40 @@ function polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarR
             }
         }
     }
-    //console.log("d ",d," r ",polarCoords.r);
     return polarCoords.r;
 }
 
-function getPolarCoordinates(d, i, geometryConfig) {
-    //console.log((geometryConfig.radialScale).ticks(5));
-    var r = geometryConfig.radialScale(d[1]);
-    //console.log( "r", r);
-    //console.log( "r", Math.abs(r));
-    r = Math.abs(r);
+function polarRadiusLineShift(polarRadiusValue, locationRatio, polarMove, polarRCap, zeroLoc, d) {
+    if(locationRatio > 1) {
+        // Normlise the points because of the largest negative extremity
+        polarRadiusValue = polarRadiusValue * (polarRCap / polarMove);
+    }
+    if(d[1] < 0) {
+        if(locationRatio > 1) {
+            polarRadiusValue = polarRCap - polarRadiusValue;
+            polarRadiusValue = polarRadiusValue * (zeroLoc / polarRCap);
+            polarRadiusValue = 170 * (polarRadiusValue / 180);
+        } else {
+            polarRadiusValue = polarMove - polarRadiusValue;
+            polarRadiusValue = polarRadiusValue * locationRatio;
+        }
+        
+    } else {
+        if(locationRatio > 1) {
+            polarRadiusValue = polarRCap + polarRadiusValue;
+            polarRadiusValue = polarRadiusValue * (zeroLoc / polarRCap);
+            polarRadiusValue = 170 * (polarRadiusValue / 180);
+        } else {
+            polarRadiusValue = polarMove + polarRadiusValue;
+            polarRadiusValue = polarRadiusValue * locationRatio;
+        }
+    }
+    return polarRadiusValue;
+}
 
+function getPolarCoordinates(d, i, geometryConfig) {
+    var r = geometryConfig.radialScale(d[1]);
+    r = Math.abs(r);
     var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
     return {
         r: r,
@@ -294,9 +281,7 @@ function convertToCartesian(polarCoordinates) {
 function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig, polarRCap) {
     var geometryConfigx = geometryConfig;
     var polarMove = getPolarCoordinates([lowestNegativePos[1], lowestNegativePos[0]], 0, geometryConfigx).r;
-    var lowestPolar = Math.abs(lowestNegativePos[0]);
     var ratioTotal = Math.abs(lowestNegativePos[0]) + highestPos[0];
-   //console.log(" ratioTotal " , ratioTotal);
     var ratioSteps = 1 / ratioTotal;
     var ratioCreator = Math.abs(lowestNegativePos[0]) * ratioSteps;
     var locationRatio = 1;
@@ -308,31 +293,29 @@ function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig, polarRC
         locationRatio = 1 - ratioCreator;
         zeroLoc = 180 - (180 * locationRatio);
     }
-    //console.log(polarMove, locationRatio, zeroLoc);
     return [polarMove, locationRatio, zeroLoc];
 }
 
-function moveOriginOld(data, lowestNegativePos, highestPos, geometryConfig) {
-    var geometryConfigx = geometryConfig;
-    var polarMove = getPolarCoordinates([data[0][lowestNegativePos][0], data[0][lowestNegativePos][1]], 0, geometryConfigx).r;
-    var lowestPolar = Math.abs(data[0][lowestNegativePos][1]);
-    var ratioTotal = Math.abs(data[0][lowestNegativePos][1]) + data[0][highestPos][1];
-   // console.log("data[0][highestPos][1] ",data[0][highestPos][1]);
-    var ratioSteps = 1 / ratioTotal;
-    var ratioCreator = Math.abs(data[0][lowestNegativePos][1]) * ratioSteps;
-    var locationRatio = 1;
-    var zeroLoc = 0;
-    if(Math.abs(data[0][lowestNegativePos][1]) > data[0][highestPos][1]) {
-        //console.log("hey");
-        //locationRatio = 1 + (ratioCreator - 0.5);
-        
-        zeroLoc = 90 * locationRatio;
-    } else {
-        locationRatio = 1 - ratioCreator;
-        zeroLoc = 180 - (180 * locationRatio);
-    }
-    //console.log(polarMove, locationRatio, zeroLoc);
-    return [polarMove, locationRatio, zeroLoc];
+function buildBarGraph(d, i, pI, _config, geometryConfig, angularScale) {
+    var dataConfig = _config[pI].data;
+    var h = geometryConfig.radialScale(d[1]) - geometryConfig.radialScale(0);
+    var stackTop = geometryConfig.radialScale(d[2] || 0);
+    var w = dataConfig.barWidth;
+    d3.select(this).attr({
+        'class': 'mark bar',
+        d: 'M' + [ [ h + stackTop, -w / 2 ], [ h + stackTop, w / 2 ], [ stackTop, w / 2 ], [ stackTop, -w / 2 ] ].join('L') + 'Z',
+        transform: function(d) {
+            return 'rotate(' + (geometryConfig.orientation + angularScale(d[0])) + ')';
+        }
+    });
 }
 
+function buildDotCoords(stackedData, dataNegativesFound, locationRatio, polarRCap, polarMove, d, polarTypeLine, zeroLoc, geometryConfig, highestDataValue) {
+    // Get polar coordinates so they can be manipulated/converted into cartesian coords
+    var polarCoords = getPolarCoordinates(stackedData, 0, geometryConfig);
+    // If negatives are found, scaling needs to occure alosngside ploting a new origin center
+    polarCoords.r = polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarRCap, polarMove, d, polarTypeLine, zeroLoc, geometryConfig, highestDataValue);
+    var coord = convertToCartesian(polarCoords);
+    return coord;
+}
 module.exports.exportPlots = exportPlots;

@@ -232,9 +232,6 @@ var polarRCap = 180;
             if(isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
         });
 
-        console.log("data test one ",high);
-        console.log("data test one ",low);
-
         containerData = plotExports.exportPlots(config, dashArray,high,low,hasNegatives);
         zeroLocation = containerData.zeroLoc;
         polarMoved = containerData.polarMove;
