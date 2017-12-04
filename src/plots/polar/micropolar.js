@@ -23,6 +23,10 @@ var polarMoved = 0;
 var zeroRatio =0;
 var lowestPolar =0;
 var polarTypeLine = false;
+var high=0;
+var low=0;
+var hasNegatives = false;
+var polarRCap = 180;
 // Render the Polar Plot
 µ.Axis = function module(){
     var config = {data: [],layout: {}}, inputConfig = {}, liveConfig = {};
@@ -222,11 +226,21 @@ var polarTypeLine = false;
             dash: [ 5, 2 ],
             dot: [ 2, 5 ]
         };
-        containerData = plotExports.exportPlots(config, dashArray);
+
+        var isStack = !!config[0].data.yStack;
+        var data = config.map(function(d) {
+            if(isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
+        });
+
+        console.log("data test one ",high);
+        console.log("data test one ",low);
+
+        containerData = plotExports.exportPlots(config, dashArray,high,low,hasNegatives);
         zeroLocation = containerData.zeroLoc;
         polarMoved = containerData.polarMove;
         zeroRatio = containerData.locationRatio;
         polarTypeLine = containerData.polarTypeLine;
+        polarRCap = containerData.polarRCap;
     }
     exports.config = function(_x) {
         if (!arguments.length) return config;
@@ -472,8 +486,14 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         var metaData = getMetaData(plotData);
         dataNegatives = metaData[0];
         lowestVal = metaData[2];
+        highestValPos = metaData[3];
+        lowestValPos = metaData[4];
+        hasNegatives = metaData[5];
+
 
         if(dataNegatives) {
+            low = [plotData[lowestValPos[0]].r[0][lowestValPos[1]],plotData[lowestValPos[0]].t[0][lowestValPos[1]]];
+            high = [plotData[highestValPos[0]].r[0][highestValPos[1]],plotData[highestValPos[0]].t[0][highestValPos[1]]];
             var steps = (radialScale).ticks(5).length -1;
             var interval = (Math.abs(highestVal) - lowestVal)/steps;
             negativeAxis = [lowestVal];
@@ -481,12 +501,14 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
                 negativeAxis.push((lowestVal+(interval*count)).toPrecision(2));
             }
         }
+        console.log("negativeAxis "+negativeAxis);
         radialAxis.selectAll('g>text').text(function(d, i) {
             if(dataNegatives) {
                 return negativeAxis[i] + axisConfig.radialAxis.ticksSuffix;
             }
             // deal with negative changes
             return this.textContent + axisConfig.radialAxis.ticksSuffix;
+        
         }).style(fontStyle).style({
             'text-anchor': 'start'
         }).attr({
@@ -515,20 +537,20 @@ function getMetaData(plotData){
     var lowestValPos =0;
     for(var numberOfData = 0;numberOfData<plotData.length;numberOfData++){
         for(var counter = 0;counter<plotData[numberOfData].r[0].length;counter++){
-            if(plotData[numberOfData].r[0][counter] > highestVal) {
+            if(plotData[numberOfData].r[0][counter] >= highestVal) {
                 highestVal = plotData[numberOfData].r[0][counter];
-                highestValPos = numberOfData;
+                highestValPos = [numberOfData,counter];
             }
             if(plotData[numberOfData].r[0][counter] < lowestVal) {
                 lowestVal = plotData[numberOfData].r[0][counter];
-                lowestValPos = lowestValPos;
+                lowestValPos = [numberOfData,counter];
             }
             if(plotData[numberOfData].r[0][counter]< 0 ) {
                 dataNegatives = true;
             }
         }
     }
-    return [dataNegatives, highestVal, lowestVal]
+    return [dataNegatives, highestVal, lowestVal,highestValPos,lowestValPos,dataNegatives]
 }
 
 function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup){
@@ -809,9 +831,9 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
         var polarCoordRadius = utility.getMousePos(backgroundCircle).radius;
         var metaData = getMetaData(data);
         var dataNegatives = metaData[0];
-        var polarRCap = 180;
+        //var polarRCap = 180;
         // Invert the polar shift due to the negative values
-        polarCoordRadius =  invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, polarTypeLine, polarMoved);
+        polarCoordRadius =  invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, polarTypeLine, polarMoved, radialScale);
         radialValue = radialScale.invert(polarCoordRadius);
         // Display value 
         radialTooltip.text(utility.round(radialValue)).move([ pos[0] + chartCenter[0], pos[1] + chartCenter[1] ]);
@@ -826,12 +848,17 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
     return chartGroup
 }
 
-function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, PolarTypeLine, polarMoved){
+function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, PolarTypeLine, polarMoved, radialScale){
     if(dataNegatives){
         if(polarCoordRadius < zeroLocation){
             if(zeroRatio>1){
-                polarCoordRadius = polarCoordRadius/(zeroLocation/polarRCap);
-                polarCoordRadius = polarRCap - polarCoordRadius;
+
+                axisScaled = (radialScale).ticks(5);
+                if(axisScaled[ axisScaled.length - 1] < high[0]) {
+                    polarCoordRadius = (polarCoordRadius / polarRCap) * 185;
+                }
+                polarCoordRadius = zeroLocation - polarCoordRadius;
+                polarCoordRadius = (polarCoordRadius / zeroLocation) * polarRCap;
             }else{
                 if(PolarTypeLine){
                     polarCoordRadius = polarCoordRadius /zeroRatio;
@@ -841,11 +868,13 @@ function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, z
             polarCoordRadius = polarCoordRadius * -1;
         }else{
             if(zeroRatio>1){
-                polarCoordRadius = polarCoordRadius/(zeroLocation/polarRCap);
-                polarCoordRadius = polarCoordRadius - polarRCap;
-                if(!PolarTypeLine){
-                    polarCoordRadius = polarCoordRadius /zeroRatio;
+                axisScaled = (radialScale).ticks(5);
+                if(axisScaled[ axisScaled.length - 1] < high[0]) {
+                    polarCoordRadius = (polarCoordRadius / polarRCap) * 185;
                 }
+                polarCoordRadius = -zeroLocation + polarCoordRadius;
+                polarCoordRadius = (polarCoordRadius / zeroLocation) * polarRCap;
+
             }else{
                 polarCoordRadius = polarCoordRadius /zeroRatio;
                 polarCoordRadius = polarCoordRadius - polarMoved;
@@ -853,7 +882,8 @@ function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, z
         }
         if(zeroRatio>1){
             // Normlise the points because of the largest negative extremity
-            polarCoordRadius = polarCoordRadius/(polarRCap/polarMoved);
+            //polarCoordRadius = polarCoordRadius/(polarRCap/polarMoved);
+            polarCoordRadius = (polarCoordRadius/polarRCap)*polarMoved;
         }
        
     }
