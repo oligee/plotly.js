@@ -17,16 +17,17 @@ var plotExports = require('./polarPlotter');
 var extendDeepAll = Lib.extendDeepAll;
 var MID_SHIFT = require('../../constants/alignment').MID_SHIFT;
 var µ = module.exports = { version: '0.2.2' };
-var radiansOn = false;
-var zeroLocation = 0;
-var polarMoved = 0;
-var zeroRatio =0;
+var radiansModeOn = false;
+var polarOrginMovedAmount = 0;
+var zeroPointLocation = 0;
+var zeroPointLocationRatio =0;
 var lowestPolar =0;
 var polarTypeLine = false;
-var high=0;
-var low=0;
+var highestDataValue=0;
+var lowestDataValue=0;
 var hasNegatives = false;
-var polarRCap = 180;
+var polarRadiusMax = 180;
+
 // Render the Polar Plot
 µ.Axis = function module(){
     var config = {data: [],layout: {}}, inputConfig = {}, liveConfig = {};
@@ -34,7 +35,7 @@ var polarRCap = 180;
     var exports = {};
 
     function render(_container,scaler,isRadianOn) {
-        radiansOn = isRadianOn;
+        radiansModeOn = isRadianOn;
         container = _container || container;
         var data = config.data;
         var axisConfig = config.layout;
@@ -55,38 +56,37 @@ var polarRCap = 180;
             // Get Data Types
             var data = getDataTypes(dataOriginal);
             // Check for stacked data 
-            result  = isStackedCheck(data,axisConfig);
-            isStacked = result[0];
-            radius = result[1];
-            chartCenter = result[2];
-            dataWithGroupId = result[3];
-            extent = result[4];
-
+            var isStackedCheckResult  = isStackedCheck(data,axisConfig);
+            isStacked = isStackedCheckResult.isStacked;
+            radius = isStackedCheckResult.radius;
+            chartCenter = isStackedCheckResult.chartCenter;
+            dataWithGroupId = isStackedCheckResult.dataWithGroupId;
+            extent = isStackedCheckResult.extent;
+            // Sets up the radial scale, used to generate meta data on the data supplied e.g ticks();
             if (axisConfig.radialAxis.domain != µ.DATAEXTENT) extent[0] = 0;
             radialScale = d3.scale.linear().domain(axisConfig.radialAxis.domain != µ.DATAEXTENT && axisConfig.radialAxis.domain ? axisConfig.radialAxis.domain : extent).range([0, radius ]);
             liveConfig.layout.radialAxis.domain = radialScale.domain();
-
             var angularDataMerged = utility.flattenArray(data.map(function(d, i) {
                 return d.t;
             }));
             // Builds some data based on if the plot is ordinal
-            result = isOrdinalCheckOne(angularDataMerged,data,isStacked);
-            data = result[0];
-            ticks = result[1];
-            angularDataMerged = result[2];
-            isOrdinal = result[3];
+            var ordinalCheckOneResults = isOrdinalCheckOne(angularDataMerged,data,isStacked);
+            data = ordinalCheckOneResults.data;
+            ticks = ordinalCheckOneResults.ticks;
+            angularDataMerged = ordinalCheckOneResults.angularDataMerged;
+            isOrdinal = ordinalCheckOneResults.isOrdinal;
             // More variable setup
             var hasOnlyLineOrDotPlot = data.filter(function(d, i) {
                 return d.geometry === 'LinePlot' || d.geometry === 'DotPlot';
             }).length === data.length;
-            var graphData = handlePlotTypes(axisConfig, isOrdinal, hasOnlyLineOrDotPlot,angularDataMerged);
-            var angularDomainWithPadding = graphData[0];
-            var needsEndSpacing = graphData[1];
-            var angularDomainStep = graphData[2];
+            var graphDataResults = handlePlotTypes(axisConfig, isOrdinal, hasOnlyLineOrDotPlot,angularDataMerged);
+            var angularDomainWithPadding = graphDataResults.angularDomainWithPadding;
+            var needsEndSpacing = graphDataResults.needsEndSpacing;
+            var angularDomainStep = graphDataResults.angularDomainStep;
             //Build axies and create addtional feilds
-            var axisResults = buildAxis(axisConfig,angularDomainWithPadding);
-            var angularScale = axisResults[0];
-            var angularAxisRange = axisResults[1];
+            var buildAxisResults = buildAxis(axisConfig,angularDomainWithPadding);
+            var angularScale = buildAxisResults.angularScale;
+            var angularAxisRange = buildAxisResults.angularAxisRange;
             liveConfig.layout.angularAxis.domain = angularScale.domain();
             liveConfig.layout.angularAxis.endPadding = needsEndSpacing ? angularDomainStep : 0;
             // Create svg
@@ -98,33 +98,33 @@ var polarRCap = 180;
             titleStyle = styles[1];
             // Builds the legend, returning the container and the bounding box, returns changes
             legendData = buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig);
-            legendBBox = legendData[0];
-            legendContainer = legendData[1];
-            liveConfig = legendData[2];
-            radius = legendData[3];
-            chartCenterBuffer = legendData[4];
-            // check return makes sense
+            legendBBox = legendData.legendBBox;
+            legendContainer = legendData.legendContainer;
+            liveConfig = legendData.liveConfig;
+            legendRadius = legendData.radius;
+            chartCenterBuffer = legendData.chartCenterBuffer;
+            // Check return makes sense
             if(typeof chartCenterBuffer !== "undefined"){
                 chartCenter = chartCenterBuffer
             }
             var chartGroup = svg.select('.chart-group');
             // Set Svg Attributes
-            svgData = assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCenter);
+            svgData = assignSvgAttributes(svg,axisConfig,legendBBox,legendRadius,chartGroup,chartCenter);
             svg = svgData[0];
             centeringOffset = svgData[1];
             // Create the radial Axis
-            radialAxisData = createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,data);
+            radialAxisData = createRadialAxis(svg,axisConfig,radialScale,lineStyle,legendRadius,data);
             radialAxis = radialAxisData[0];
             backgroundCircle = radialAxisData[1];
             // Could this be moved?
             function currentAngle(d, i) {
                 return angularScale(d) % 360 + axisConfig.orientation;
             }
-            // angularAxis
+            // AngularAxis
             var angularAxis = svg.select('.angular.axis-group').selectAll('g.angular-tick').data(angularAxisRange);
             var angularAxisEnter = angularAxis.enter().append('g').classed('angular-tick', true);
-            angularAxis = assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup);
-            // geometryContainer
+            angularAxis = assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,legendRadius,ticks,chartGroup);
+            // GeometryContainer
             var hasGeometry = svg.select('g.geometry-group').selectAll('g').size() > 0;
             var geometryContainer = svg.select('g.geometry-group').selectAll('g.geometry').data(data);
             geometryContainer = assignGeometryContainerAttributes(geometryContainer,data,radialScale,angularScale,axisConfig,scaler,radialScale);
@@ -148,25 +148,25 @@ var polarRCap = 180;
                 container: tooltipContainer,
                 hasTick: true
             })();
-
-            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,radius,axisConfig,angularScale,angularTooltip,chartCenter)
+            // Checks if plot type is ordinal and add angular tool tip if so
+            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,legendRadius,axisConfig,angularScale,angularTooltip,chartCenter)
             var angularGuideCircle = guides.select('circle').style({
                 stroke: 'grey',
                 fill: 'none'
             });
-            // outer ring display
+            // Outer ring display
             chartGroup =  outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip,data);
             // Displays box with result values in
             svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data);
         });
         return exports;
     }
-
+    // Render function called from the manager to intitate polar plotting
     exports.render = function(_container,scaler,isRadianOn) {
         render(_container,scaler,isRadianOn);
         return this;
     };
-    
+    // Define polar config
     exports.config = function(_x) {
         if (!arguments.length) return config;
 
@@ -204,17 +204,9 @@ var polarRCap = 180;
     var config = defaults.defaultConfig();
     return config;
 };
-
-µ.DATAEXTENT = 'dataExtent';
-
-µ.AREA = 'AreaChart';
-
-µ.LINE = 'LinePlot';
-
-µ.DOT = 'DotPlot';
-
-µ.BAR = 'BarChart';
-
+// Build polar plot types
+plotExports.definePlotTypes(µ);
+// Build polar plots
 µ.PolyChart = function module() {
     var config = [ µ.PolyChart.defaultConfig() ];
     var dispatch = d3.dispatch('hover');
@@ -232,12 +224,14 @@ var polarRCap = 180;
             if(isStack) return d3.zip(d.data.t[0], d.data.r[0], d.data.yStack[0]); else return d3.zip(d.data.t[0], d.data.r[0]);
         });
 
-        containerData = plotExports.exportPlots(config, dashArray,high,low,hasNegatives);
-        zeroLocation = containerData.zeroLoc;
-        polarMoved = containerData.polarMove;
-        zeroRatio = containerData.locationRatio;
+        // Define the plotted points / lines / area segments 
+        // Returns data needed to deal with a shifted origin
+        containerData = plotExports.exportPlots(config, dashArray,highestDataValue,lowestDataValue,hasNegatives);
+        zeroPointLocation = containerData.zeroLoc;
+        polarOrginMovedAmount = containerData.polarMove;
+        zeroPointLocationRatio = containerData.locationRatio;
         polarTypeLine = containerData.polarTypeLine;
-        polarRCap = containerData.polarRCap;
+        polarRadiusMax = containerData.polarRCap;
     }
     exports.config = function(_x) {
         if (!arguments.length) return config;
@@ -321,6 +315,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
         }).style({
             display: 'block'
         });
+        // Defines plot point names 
         var elements = data.map(function(d, i) {
             var datumClone = utility.cloneJson(d);
             datumClone.symbol = d.geometry === 'DotPlot' ? d.dotType || 'circle' : d.geometry != 'LinePlot' ? 'square' : 'line';
@@ -328,7 +323,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
             datumClone.color = d.geometry === 'LinePlot' ? d.strokeColor : d.color;
             return datumClone;
         });
-
+        // Uses legend.js to build elements of the legend and power addtional functionailty e.g. show hide data
         legend.Legend().config({
             data: data.map(function(d, i) {
                 return d.name || 'Element' + i;
@@ -342,6 +337,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
                 }
             )
         })();
+
         legendBBox = legendContainer.node().getBBox();
         radius = Math.min(axisConfig.width - legendBBox.width - axisConfig.margin.left - axisConfig.margin.right, axisConfig.height - axisConfig.margin.top - axisConfig.margin.bottom) / 2;
         radius = Math.max(10, radius);
@@ -354,7 +350,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
             display: 'none'
         });
     }
-    return [legendBBox,legendContainer,liveConfig,radius,chartCenter]
+    return {"legendBBox": legendBBox,"legendContainer": legendContainer,"liveConfig" : liveConfig,"radius" : radius,"chartCenter" : chartCenter}
 }
 
 function buildFontStyle(axisConfig){
@@ -368,7 +364,7 @@ function buildFontStyle(axisConfig){
         }).join(',')
     };
     // Added feature to alter the title, will use default font features if aspect is not found
-    // Gets font size if possible#
+    // Gets font size if possible
     if(axisConfig.titlefont == undefined){
         var titleStyle = fontStyle;
     }else{
@@ -398,7 +394,7 @@ function buildFontStyle(axisConfig){
     }
     return [fontStyle,titleStyle]
 }
-
+// SVG is the HTML container used to hold most of the plotly elements
 function createSVG(self,d3){
     svg = d3.select(self).select('svg.chart-root');
     if (typeof svg === 'undefined' || svg.empty()) {
@@ -418,7 +414,7 @@ function createSVG(self,d3){
     });
     return svg
 }
-
+// SVG positioning
 function assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCenter){
     svg.attr({width: axisConfig.width,height: axisConfig.height}).style({opacity: axisConfig.opacity});
     chartGroup.attr('transform', 'translate(' + chartCenter + ')').style({cursor: 'crosshair'});
@@ -437,12 +433,14 @@ function assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCe
     return [svg,centeringOffset]
     
 }
-
+// Radial axis created
+// Controlls the axis's rotational possition on the plot
+// Identifies max and lowest values that will be plotted, max value can be over the axis to ensure linear axis distrubution 
 function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
-
     var radialAxis = svg.select('.radial.axis-group');
     if (axisConfig.radialAxis.gridLinesVisible) {
-        //console.log((radialScale).ticks(5) + " RadialScale");
+        // Defines the number of circle layers on the plot by getting the number of stages in the axis 
+        // Note:- (radialScale).ticks(5) cannot deal with negative values - making it tricky when dealing with negative values 
         var gridCircles = radialAxis.selectAll('circle.grid-circle').data((radialScale).ticks(5));
         gridCircles.enter().append('circle').attr({
             'class': 'grid-circle'
@@ -450,7 +448,6 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
         gridCircles.attr('r', radialScale);
         gridCircles.exit().remove();
     }
-
     radialAxis.select('circle.outside-circle').attr({
         r: radius
     }).style(lineStyle);
@@ -474,23 +471,23 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
 
         radialAxis.selectAll('.domain').style(lineStyle);
         // Test for negatives 
-        var dataNegatives = false;
+        var dataNegativesFound = false;
         var scaleValues = (radialScale).ticks(5);
         var highestVal = scaleValues[scaleValues.length-1];
         var lowestVal =0;
+        // Stores the result of the new axis
         var negativeAxis = [];
-
+        // Get meta data on the input data
         var metaData = getMetaData(plotData);
-        dataNegatives = metaData[0];
-        lowestVal = metaData[2];
-        highestValPos = metaData[3];
-        lowestValPos = metaData[4];
-        hasNegatives = metaData[5];
-
-
-        if(dataNegatives) {
-            low = [plotData[lowestValPos[0]].r[0][lowestValPos[1]],plotData[lowestValPos[0]].t[0][lowestValPos[1]]];
-            high = [plotData[highestValPos[0]].r[0][highestValPos[1]],plotData[highestValPos[0]].t[0][highestValPos[1]]];
+        dataNegativesFound = metaData.dataNegativesFound;
+        hasNegatives = dataNegativesFound;
+        lowestVal = metaData.lowestVal;
+        highestValPos = metaData.highestValPos;
+        lowestValPos = metaData.lowestValPos;
+        // If negatives are found a new scale has to be created manually to deal with code flaws of plotly
+        if(dataNegativesFound) {
+            lowestDataValue = [plotData[lowestValPos[0]].r[0][lowestValPos[1]],plotData[lowestValPos[0]].t[0][lowestValPos[1]]];
+            highestDataValue = [plotData[highestValPos[0]].r[0][highestValPos[1]],plotData[highestValPos[0]].t[0][highestValPos[1]]];
             var steps = (radialScale).ticks(5).length -1;
             var interval = (Math.abs(highestVal) - lowestVal)/steps;
             negativeAxis = [lowestVal];
@@ -498,12 +495,11 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
                 negativeAxis.push((lowestVal+(interval*count)).toPrecision(2));
             }
         }
-        console.log("negativeAxis "+negativeAxis);
         radialAxis.selectAll('g>text').text(function(d, i) {
-            if(dataNegatives) {
+            if(dataNegativesFound) {
                 return negativeAxis[i] + axisConfig.radialAxis.ticksSuffix;
             }
-            // deal with negative changes
+            // Deal with negative changes
             return this.textContent + axisConfig.radialAxis.ticksSuffix;
         
         }).style(fontStyle).style({
@@ -525,9 +521,9 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
     }
     return [radialAxis,backgroundCircle]
 }
-
+// Takes in the plot data, returns usefull data about the plot points provided 
 function getMetaData(plotData){
-    var dataNegatives = false;
+    var dataNegativesFound = false;
     var highestVal = 0;
     var highestValPos = 0;
     var lowestVal =0;
@@ -543,11 +539,12 @@ function getMetaData(plotData){
                 lowestValPos = [numberOfData,counter];
             }
             if(plotData[numberOfData].r[0][counter]< 0 ) {
-                dataNegatives = true;
+                dataNegativesFound = true;
             }
         }
     }
-    return [dataNegatives, highestVal, lowestVal,highestValPos,lowestValPos,dataNegatives]
+    return {"dataNegativesFound": dataNegativesFound, "highestVal": highestVal, "lowestVal":lowestVal,
+            "highestValPos": highestValPos,"lowestValPos": lowestValPos,"dataNegativesFound": dataNegativesFound}
 }
 
 function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angularAxisEnter,lineStyle,radius,ticks,chartGroup){
@@ -613,10 +610,9 @@ function assignAngularAxisAttributes(angularAxis,currentAngle,axisConfig,angular
     legendContainer.attr({
         transform: 'translate(' + [ radius + rightmostTickEndX, axisConfig.margin.top ] + ')'
     });
-
     return angularAxis
 }
-
+// Checks if plot type is ordinal, if so then displays a angular tool tip
 function isOrdinalCheckOne(angularDataMerged,data,isStacked){
     var ticks;
     var isOrdinal = typeof angularDataMerged[0] === 'string';
@@ -631,9 +627,10 @@ function isOrdinalCheckOne(angularDataMerged,data,isStacked){
             return result;
         });
     }
-    return [data,ticks,angularDataMerged,isOrdinal]
+    return {"data": data,"ticks": ticks,"angularDataMerged": angularDataMerged,"isOrdinal": isOrdinal}
 }
-
+// Checks if plot type requires angular tooltip, if so; then adds one.
+// Can alter this value between and angle and radian based on radiansModeOn
 function isOrdinalCheckTwo(isOrdinal, guides, chartGroup, radius, axisConfig, angularScale, angularTooltip, chartCenter) {
     if (!isOrdinal) {
         var angularGuideLine = guides.select('line').attr({
@@ -655,7 +652,7 @@ function isOrdinalCheckTwo(isOrdinal, guides, chartGroup, radius, axisConfig, an
             var angleWithOriginOffset = (mouseAngle + 180 + 360 - axisConfig.orientation) % 360;
             angularValue = angularScale.invert(angleWithOriginOffset);
             // Display radians on tool tip
-            if(radiansOn){
+            if(radiansModeOn){
                 angularValue = ((parseInt(angularValue)*Math.PI)/180).toPrecision(3);
             }
             var pos = utility.convertToCartesian(radius + 12, mouseAngle + 180);
@@ -735,7 +732,7 @@ function assignGeometryContainerAttributes(geometryContainer, data, radialScale,
     }
     return geometryContainer
 }
-
+// Displays overlay when point is hoverd over
 function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
     svg.selectAll('.geometry-group .mark').on('mouseover.tooltip', function(d, i) {
         var el = d3.select(this);
@@ -755,7 +752,7 @@ function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
                 fill: newColor,
                 opacity: 1
             });
-            if(radiansOn){
+            if(radiansModeOn){
                 var textData = {
                     t: ((parseInt(d[0])*Math.PI)/180).toPrecision(3),
                     r: utility.round(d[1]),              
@@ -828,9 +825,8 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
         var polarCoordRadius = utility.getMousePos(backgroundCircle).radius;
         var metaData = getMetaData(data);
         var dataNegatives = metaData[0];
-        //var polarRCap = 180;
         // Invert the polar shift due to the negative values
-        polarCoordRadius =  invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, polarTypeLine, polarMoved, radialScale);
+        polarCoordRadius =  invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroPointLocation, zeroPointLocationRatio, polarRadiusMax, polarTypeLine, polarOrginMovedAmount, radialScale);
         radialValue = radialScale.invert(polarCoordRadius);
         // Display value 
         radialTooltip.text(utility.round(radialValue)).move([ pos[0] + chartCenter[0], pos[1] + chartCenter[1] ]);
@@ -844,14 +840,14 @@ function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCi
     });
     return chartGroup
 }
-
+// Used to undo the changes made when ploting point in order to get back to an orignal value
 function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, zeroRatio, polarRCap, PolarTypeLine, polarMoved, radialScale){
     if(dataNegatives){
         if(polarCoordRadius < zeroLocation){
             if(zeroRatio>1){
 
                 axisScaled = (radialScale).ticks(5);
-                if(axisScaled[ axisScaled.length - 1] < high[0]) {
+                if(axisScaled[ axisScaled.length - 1] < highestDataValue[0]) {
                     polarCoordRadius = (polarCoordRadius / polarRCap) * 185;
                 }
                 polarCoordRadius = zeroLocation - polarCoordRadius;
@@ -866,7 +862,7 @@ function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, z
         }else{
             if(zeroRatio>1){
                 axisScaled = (radialScale).ticks(5);
-                if(axisScaled[ axisScaled.length - 1] < high[0]) {
+                if(axisScaled[ axisScaled.length - 1] < highestDataValue[0]) {
                     polarCoordRadius = (polarCoordRadius / polarRCap) * 185;
                 }
                 polarCoordRadius = -zeroLocation + polarCoordRadius;
@@ -879,14 +875,13 @@ function invertPolarRadiusShift(dataNegatives, polarCoordRadius, zeroLocation, z
         }
         if(zeroRatio>1){
             // Normlise the points because of the largest negative extremity
-            //polarCoordRadius = polarCoordRadius/(polarRCap/polarMoved);
             polarCoordRadius = (polarCoordRadius/polarRCap)*polarMoved;
         }
        
     }
     return polarCoordRadius;
 }
-
+// The pie splits in the area plots 
 function addSegementDividers(dataOriginal, axisConfig, liveConfig){
     var colorIndex = 0;
     dataOriginal.forEach(function(d, i) {
@@ -946,7 +941,7 @@ function isStackedCheck(data, axisConfig) {
     } else extent = d3.extent(utility.flattenArray(data.map(function(d, i) {
         return d.r;
     })));
-    return [isStacked,radius,chartCenter,dataWithGroupId,extent]
+    return {"isStacked": isStacked,"radius": radius,"chartCenter": chartCenter,"dataWithGroupId": dataWithGroupId,"extent": extent}
 }
 
 function getDataTypes(dataOriginal) {
@@ -965,7 +960,7 @@ function handlePlotTypes(axisConfig, isOrdinal, hasOnlyLineOrDotPlot,angularData
     if (hasOnlyLineOrDotPlot && !isOrdinal) angularDomainStep = 0;
     var angularDomainWithPadding = angularDomain.slice();
     if (needsEndSpacing && isOrdinal) angularDomainWithPadding[1] += angularDomainStep;
-    return [angularDomainWithPadding,needsEndSpacing,angularDomainStep];
+    return {"angularDomainWithPadding": angularDomainWithPadding,"needsEndSpacing": needsEndSpacing,"angularDomainStep": angularDomainStep};
 }
 
 function buildAxis(axisConfig, angularDomainWithPadding) {
@@ -985,7 +980,7 @@ function buildAxis(axisConfig, angularDomainWithPadding) {
 }
 
 function buildAddtionalAxies(axisConfig, angularAxisRange, angularDomainWithPadding) {
-        // ADDTIONAL VALUES
+        // create adtional axies than just the basic one provided, whether this happens is built read from the config created by the user.
         var angleLabels = {'angleLabels': axisConfig.angleLabels};
         if(angleLabels.angleLabels !== undefined){
         var vals = Object.keys(angleLabels).map(function(key) {
@@ -998,7 +993,7 @@ function buildAddtionalAxies(axisConfig, angularAxisRange, angularDomainWithPadd
         }
         // ADDTIONAL VALUES END
         angularScale = d3.scale.linear().domain(angularDomainWithPadding.slice(0, 2)).range(axisConfig.direction === 'clockwise' ? [ 0, 360 ] : [ 360, 0 ]);
-        return  [angularScale,angularAxisRange]
+        return  {"angularScale": angularScale,"angularAxisRange": angularAxisRange}
 }
 
 function buildAxiesRange(axisConfig, tickCount, angularDomainWithPadding) {
@@ -1020,7 +1015,7 @@ function buildAxiesRange(axisConfig, tickCount, angularDomainWithPadding) {
 }
 
 function renderAxies(d, i, axisConfig){
-    if(radiansOn){
+    if(radiansModeOn){
         // Display for Radians
         var addtionalLabels = getAngleLabels(d, i, axisConfig);
         if(addtionalLabels != ""){
@@ -1036,6 +1031,7 @@ function renderAxies(d, i, axisConfig){
         return d + axisConfig.angularAxis.ticksSuffix;
     }
 }
+
 function getAngleLabels(d, i, axisConfig){
     var angleLabels = {'angleLabels': axisConfig.angleLabels}; 
     var addtionalLabels = "";
@@ -1050,6 +1046,7 @@ function getAngleLabels(d, i, axisConfig){
     }
     return addtionalLabels
 }
+
 function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig){
     var geometryConfigx = geometryConfig;
     var polarMove = getPolarCoordinates([data[0][lowestNegativePos][0],data[0][lowestNegativePos][1]],0,geometryConfigx).r;
@@ -1066,24 +1063,6 @@ function moveOrigin(data, lowestNegativePos, highestPos, geometryConfig){
         var zeroLoc = 180-(180*locationRatio);
     }
     return[polarMove, locationRatio, zeroLoc]
-}
-
-function getPolarCoordinates(d, i, geometryConfig) {
-    var r = geometryConfig.radialScale(Math.abs(d[1]));
-    var t = ((geometryConfig.angularScale(d[0]) + geometryConfig.orientation)) * Math.PI / 180;
-    return {
-        r: r,
-        t: t
-    };
-}
-
-function convertToCartesian(polarCoordinates) {
-    var x = polarCoordinates.r * Math.cos(polarCoordinates.t);
-    var y = polarCoordinates.r * Math.sin(polarCoordinates.t);
-    return {
-        x: x,
-        y: y
-    };
 }
 
 function polarRadiusShift(polarCoords, dataNegativesFound, locationRatio, polarRCap, polarMove,  d, polarTypeLine, zeroLoc) {
