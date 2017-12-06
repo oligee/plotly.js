@@ -175,6 +175,7 @@
         "hovermode": "x",
         "separators": ".,",
         "hidesources": false,
+        "smith": false,
         "showlegend": false
     }
 }

@@ -79,16 +79,6 @@
       },
       "visible": false,
       "name": "Data set 3"
-    },
-    {
-        "x": [2, 3, 4],
-        "y": [0.4, 0.6, 0.8],
-        "z": [[1, 2], [3, 4]],
-        "type": "heatmap",
-        "colorbar": {
-            "x": -0.2,
-            "y": 0.6
-        }
     }
   ],
   "layout": {
@@ -133,8 +123,7 @@
                 true,
                 false,
                 false,
-                false,
-                true
+                false
               ]
             ],
             "label": "Data set 0"
@@ -147,8 +136,7 @@
                 false,
                 true,
                 false,
-                false,
-                true
+                false
               ]
             ],
             "label": "Data set 1"
@@ -161,8 +149,7 @@
                 false,
                 false,
                 true,
-                false,
-                true
+                false
               ]
             ],
             "label": "Data set 2"
@@ -175,7 +162,6 @@
                 false,
                 false,
                 false,
-                true,
                 true
               ]
             ],

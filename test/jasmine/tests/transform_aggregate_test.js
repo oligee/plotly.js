@@ -59,10 +59,6 @@ describe('aggregate', function() {
         expect(traceOut.marker.opacity).toEqual([0.6, 'boo']);
         expect(traceOut.marker.line.color).toEqual(['the end', 3.3]);
         expect(traceOut.marker.line.width).toEqual([4, 1]);
-
-        var transform = traceOut.transforms[0];
-        var inverseMapping = transform._indexToPoints;
-        expect(inverseMapping).toEqual({0: [0, 2, 3, 4], 1: [1]});
     });
 
     it('handles all funcs except sum for date data', function() {
@@ -167,10 +163,6 @@ describe('aggregate', function() {
         expect(traceOut.y).toEqual(['b', undefined]);
         // category average: can result in fractional categories -> rounds (0.5 rounds to 1)
         expect(traceOut.text).toEqual(['b', 'b']);
-
-        var transform = traceOut.transforms[0];
-        var inverseMapping = transform._indexToPoints;
-        expect(inverseMapping).toEqual({0: [0, 1], 1: [2, 3]});
     });
 
     it('can aggregate on an existing data array', function() {
@@ -193,12 +185,10 @@ describe('aggregate', function() {
         expect(traceOut.x).toEqual([8, 7]);
         expect(traceOut.y).toBeCloseToArray([16 / 3, 7], 5);
         expect(traceOut.marker.size).toEqual([10, 20]);
-
-        var transform = traceOut.transforms[0];
-        var inverseMapping = transform._indexToPoints;
-        expect(inverseMapping).toEqual({0: [0, 1, 4], 1: [2, 3]});
     });
 
+    // Regression test - throws before fix:
+    // https://github.com/plotly/plotly.js/issues/2024
     it('can handle case where aggregation array is missing', function() {
         Plotly.newPlot(gd, [{
             x: [1, 2, 3, 4, 5],
@@ -215,10 +205,6 @@ describe('aggregate', function() {
         expect(traceOut.x).toEqual([1, 3]);
         expect(traceOut.y).toEqual([2, 6]);
         expect(traceOut.marker.size).toEqual([10, 20]);
-
-        var transform = traceOut.transforms[0];
-        var inverseMapping = transform._indexToPoints;
-        expect(inverseMapping).toEqual({0: [0, 1, 4], 1: [2, 3]});
     });
 
     it('handles median, mode, rms, & stddev for numeric data', function() {
@@ -271,7 +257,7 @@ describe('aggregate', function() {
                 aggregations: [
                     {target: 'x', func: 'sum'},
                     {target: 'x', func: 'avg'},
-                    {target: 'y', func: 'avg'}
+                    {target: 'y', func: 'avg'},
                 ]
             }]
         }]);

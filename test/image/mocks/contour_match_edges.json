@@ -10487,6 +10487,7 @@
       "title":"Click to enter Plot title",
       "plot_bgcolor":"#fff",
       "dragmode":"zoom",
+      "smith":false,
       "width":964,
       "bargap":0.2,
       "xaxis":{
