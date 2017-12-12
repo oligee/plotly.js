@@ -54,14 +54,12 @@ manager.framework = function(_gd) {
         manager.fillLayout(_gd);
         var ModeBar = require('../../components/modebar');
         ModeBar.manage(_gd);
-        console.log("count",count);
         return config;
     }
     exports.isPolar = true;
     exports.svg = function() { return plot.svg(); };
     exports.getConfig = function() { return config; };
     exports.getLiveConfig = function() {
-        console.log("try to build adapter");
         return adapter.plotly().convert(plot.getLiveConfig(), true);
     };
     exports.getLiveScales = function() { return {t: plot.angularScale(), r: plot.radialScale()}; };

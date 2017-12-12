@@ -147,8 +147,8 @@ function applyLegendClickHandler(tickElements, legends, legendConfig, colorScale
         var valueTest = PLOT_ID;
         // Listener for the text
         el.addEventListener('click', (function(i, el, valueTest) {return function() {
-            var plot = document.getElementsByClassName('background-circle' + valueTest);
-            var li = plot[0].parentElement.getElementsByClassName('line');
+            var plot = document.querySelectorAll('.background-circle' + valueTest);
+            var li = plot[0].parentElement.querySelectorAll('.line');
             if(el.childNodes[1].style.fill === legendConfig.textColor) {
                 el.childNodes[1].style.fill = 'black';
                 legends[i].style.fill = 'black';

@@ -36,9 +36,7 @@ var POLAR_ID = 0;
     var exports = {};
 
     function render(_container,scaler,isRadianOn,chartID) {
-        console.log("ID IS ",chartID);
         POLAR_ID = chartID;
-        console.log("POLAR_ID ",POLAR_ID);
         radiansModeOn = isRadianOn;
         container = _container || container;
         var data = config.data;
@@ -106,7 +104,6 @@ var POLAR_ID = 0;
             }
             //var chartGroup = svg.select('.chart-group'+POLAR_ID);
             var chartGroup = svg.select('.chart-group');
-            console.log("chartGroup ", chartGroup);
             // Set Svg Attributes
             svgData = assignSvgAttributes(svg,axisConfig,legendBBox,legendRadius,chartGroup,chartCenter);
             svg = svgData[0];
@@ -399,10 +396,11 @@ function createSVG(self,d3){
 
     var svg = d3.select(self).select('svg.chart-root');
     if (!(typeof svg === 'undefined' || svg.empty())) {
-        var svgElement = self.getElementsByClassName('chart-root');
+        var svgElement = self.querySelectorAll('.chart-root');
+        console.log(svgElement);
         svgElement[0].parentElement.removeChild(svgElement[0]);
     } 
-    
+
     var skeleton = "<svg xmlns='http://www.w3.org/2000/svg' class='chart-root'>' + '<g class='outer-group'>' + '<g class='chart-group'>' + '<circle class='background-circle"+POLAR_ID+"'></circle>' + '<g class='geometry-group'></g>' + '<g class='radial axis-group'>' + '<circle class='outside-circle'></circle>' + '</g>' + '<g class='angular axis-group'></g>' + '<g class='guides-group'><line></line><circle r='0'></circle></g>' + '</g>' + '<g class='legend-group'></g>' + '<g class='tooltips-group'></g>' + '<g class='title-group'><text></text></g>' + '</g>' + '</svg>";
         var doc = new DOMParser().parseFromString(skeleton, 'application/xml');
         var newSvg = self.appendChild(self.ownerDocument.importNode(doc.documentElement, true));
