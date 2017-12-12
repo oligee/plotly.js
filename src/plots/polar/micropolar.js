@@ -27,6 +27,7 @@ var highestDataValue=0;
 var lowestDataValue=0;
 var hasNegatives = false;
 var polarRadiusMax = 180;
+var POLAR_ID = 0;
 
 // Render the Polar Plot
 µ.Axis = function module(){
@@ -34,18 +35,14 @@ var polarRadiusMax = 180;
     var svg, container, dispatch = d3.dispatch('hover'), radialScale, angularScale;
     var exports = {};
 
-    function render(_container,scaler,isRadianOn) {
+    function render(_container,scaler,isRadianOn,chartID) {
+        console.log("ID IS ",chartID);
+        POLAR_ID = chartID;
+        console.log("POLAR_ID ",POLAR_ID);
         radiansModeOn = isRadianOn;
         container = _container || container;
         var data = config.data;
         var axisConfig = config.layout;
-        //Remove old legend if there is one
-        var x = document.getElementsByClassName("legend-group")[0];
-        if(x != undefined){
-            if(x.childNodes.length>0){
-                x.removeChild(x.childNodes[0]);  
-            } 
-        }
         // Set container if container isnt set right ?
         if (typeof container == 'string' || container.nodeName) container = d3.select(container);
         container.datum(data).each(function(_data, _index) {
@@ -90,7 +87,7 @@ var polarRadiusMax = 180;
             liveConfig.layout.angularAxis.domain = angularScale.domain();
             liveConfig.layout.angularAxis.endPadding = needsEndSpacing ? angularDomainStep : 0;
             // Create svg
-            svg = createSVG(this,d3);         
+            svg = createSVG(this,d3);
             var lineStyle = {fill: 'none',stroke: axisConfig.tickColor};
             // Get font style, for the title and axis
             styles = buildFontStyle(axisConfig)
@@ -107,15 +104,17 @@ var polarRadiusMax = 180;
             if(typeof chartCenterBuffer !== "undefined"){
                 chartCenter = chartCenterBuffer
             }
+            //var chartGroup = svg.select('.chart-group'+POLAR_ID);
             var chartGroup = svg.select('.chart-group');
+            console.log("chartGroup ", chartGroup);
             // Set Svg Attributes
             svgData = assignSvgAttributes(svg,axisConfig,legendBBox,legendRadius,chartGroup,chartCenter);
             svg = svgData[0];
             centeringOffset = svgData[1];
             // Create the radial Axis
             radialAxisData = createRadialAxis(svg,axisConfig,radialScale,lineStyle,legendRadius,data);
-            radialAxis = radialAxisData[0];
-            backgroundCircle = radialAxisData[1];
+            var radialAxis = radialAxisData[0];
+            var backgroundCircle = radialAxisData[1];
             // Could this be moved?
             function currentAngle(d, i) {
                 return angularScale(d) % 360 + axisConfig.orientation;
@@ -149,21 +148,22 @@ var polarRadiusMax = 180;
                 hasTick: true
             })();
             // Checks if plot type is ordinal and add angular tool tip if so
-            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,legendRadius,axisConfig,angularScale,angularTooltip,chartCenter)
+            isOrdinalCheckTwo(isOrdinal,guides,chartGroup,legendRadius,axisConfig,angularScale,angularTooltip,chartCenter,backgroundCircle)
             var angularGuideCircle = guides.select('circle').style({
                 stroke: 'grey',
                 fill: 'none'
             });
             // Outer ring display
-            chartGroup =  outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip,data);
+            var chartGroupdata =  outerRingValueDisplay(chartGroup,radius,radialTooltip,angularGuideCircle,radialScale,axisConfig,chartCenter,geometryTooltip,angularTooltip,data,backgroundCircle);
+            chartGroup = chartGroupdata[0];
             // Displays box with result values in
-            svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data);
+            svgMouserHoverDisplay(isOrdinal,geometryTooltip,ticks,data,svg);
         });
         return exports;
     }
     // Render function called from the manager to intitate polar plotting
-    exports.render = function(_container,scaler,isRadianOn) {
-        render(_container,scaler,isRadianOn);
+    exports.render = function(_container,scaler,isRadianOn,ID) {
+        render(_container,scaler,isRadianOn,ID);
         return this;
     };
     // Define polar config
@@ -324,7 +324,7 @@ function buildLegend(axisConfig,svg,radius,data,radialScale,liveConfig){
             return datumClone;
         });
         // Uses legend.js to build elements of the legend and power addtional functionailty e.g. show hide data
-        legend.Legend().config({
+        legend.Legend(POLAR_ID).config({
             data: data.map(function(d, i) {
                 return d.name || 'Element' + i;
             }),
@@ -396,13 +396,18 @@ function buildFontStyle(axisConfig){
 }
 // SVG is the HTML container used to hold most of the plotly elements
 function createSVG(self,d3){
-    svg = d3.select(self).select('svg.chart-root');
-    if (typeof svg === 'undefined' || svg.empty()) {
-        var skeleton = "<svg xmlns='http://www.w3.org/2000/svg' class='chart-root'>' + '<g class='outer-group'>' + '<g class='chart-group'>' + '<circle class='background-circle'></circle>' + '<g class='geometry-group'></g>' + '<g class='radial axis-group'>' + '<circle class='outside-circle'></circle>' + '</g>' + '<g class='angular axis-group'></g>' + '<g class='guides-group'><line></line><circle r='0'></circle></g>' + '</g>' + '<g class='legend-group'></g>' + '<g class='tooltips-group'></g>' + '<g class='title-group'><text></text></g>' + '</g>' + '</svg>";
+
+    var svg = d3.select(self).select('svg.chart-root');
+    if (!(typeof svg === 'undefined' || svg.empty())) {
+        var svgElement = self.getElementsByClassName('chart-root');
+        svgElement[0].parentElement.removeChild(svgElement[0]);
+    } 
+    
+    var skeleton = "<svg xmlns='http://www.w3.org/2000/svg' class='chart-root'>' + '<g class='outer-group'>' + '<g class='chart-group'>' + '<circle class='background-circle"+POLAR_ID+"'></circle>' + '<g class='geometry-group'></g>' + '<g class='radial axis-group'>' + '<circle class='outside-circle'></circle>' + '</g>' + '<g class='angular axis-group'></g>' + '<g class='guides-group'><line></line><circle r='0'></circle></g>' + '</g>' + '<g class='legend-group'></g>' + '<g class='tooltips-group'></g>' + '<g class='title-group'><text></text></g>' + '</g>' + '</svg>";
         var doc = new DOMParser().parseFromString(skeleton, 'application/xml');
         var newSvg = self.appendChild(self.ownerDocument.importNode(doc.documentElement, true));
         svg = d3.select(newSvg);
-    }
+    //}
     svg.select('.guides-group').style({
         'pointer-events': 'none'
     });
@@ -412,11 +417,11 @@ function createSVG(self,d3){
     svg.select('.radial.axis-group').style({
         'pointer-events': 'none'
     });
-    return svg
+    return svg;
 }
 // SVG positioning
 function assignSvgAttributes(svg,axisConfig,legendBBox,radius,chartGroup,chartCenter){
-    svg.attr({width: axisConfig.width,height: axisConfig.height}).style({opacity: axisConfig.opacity});
+    svg.attr({width: axisConfig.width, height: axisConfig.height}).style({opacity: axisConfig.opacity});
     chartGroup.attr('transform', 'translate(' + chartCenter + ')').style({cursor: 'crosshair'});
     var centeringOffset = [ (axisConfig.width - (axisConfig.margin.left + axisConfig.margin.right + radius * 2 + (legendBBox ? legendBBox.width : 0))) / 2, (axisConfig.height - (axisConfig.margin.top + axisConfig.margin.bottom + radius * 2)) / 2 ];
     centeringOffset[0] = Math.max(0, centeringOffset[0]);
@@ -451,7 +456,7 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
     radialAxis.select('circle.outside-circle').attr({
         r: radius
     }).style(lineStyle);
-    var backgroundCircle = svg.select('circle.background-circle').attr({
+    var backgroundCircle = svg.select('circle.background-circle'+POLAR_ID).attr({
         r: radius
     }).style({
         fill: axisConfig.backgroundColor,
@@ -468,7 +473,6 @@ function createRadialAxis(svg,axisConfig,radialScale,lineStyle,radius,plotData){
                 transform: 'rotate(' +axisAngle["indicationbar"]+ ')'
             });
         }
-
         radialAxis.selectAll('.domain').style(lineStyle);
         // Test for negatives 
         var dataNegativesFound = false;
@@ -631,7 +635,7 @@ function isOrdinalCheckOne(angularDataMerged,data,isStacked){
 }
 // Checks if plot type requires angular tooltip, if so; then adds one.
 // Can alter this value between and angle and radian based on radiansModeOn
-function isOrdinalCheckTwo(isOrdinal, guides, chartGroup, radius, axisConfig, angularScale, angularTooltip, chartCenter) {
+function isOrdinalCheckTwo(isOrdinal, guides, chartGroup, radius, axisConfig, angularScale, angularTooltip, chartCenter,backgroundCircle) {
     if (!isOrdinal) {
         var angularGuideLine = guides.select('line').attr({
             x1: 0,
@@ -733,7 +737,7 @@ function assignGeometryContainerAttributes(geometryContainer, data, radialScale,
     return geometryContainer
 }
 // Displays overlay when point is hoverd over
-function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
+function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data, svg){
     svg.selectAll('.geometry-group .mark').on('mouseover.tooltip', function(d, i) {
         var el = d3.select(this);
         var color = this.style.fill;
@@ -812,7 +816,7 @@ function svgMouserHoverDisplay(isOrdinal, geometryTooltip, ticks, data){
     });
 }
 
-function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip,data) {
+function outerRingValueDisplay(chartGroup, radius, radialTooltip, angularGuideCircle, radialScale, axisConfig, chartCenter, geometryTooltip, angularTooltip,data,backgroundCircle) {
     chartGroup.on('mousemove.radial-guide', function(d, i) {
         var r = utility.getMousePos(backgroundCircle).radius;
         angularGuideCircle.attr({

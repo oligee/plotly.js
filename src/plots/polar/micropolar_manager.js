@@ -20,6 +20,7 @@ var extendDeepAll = Lib.extendDeepAll;
 var manager = module.exports = {};
 var scale = 1;
 var isRadianOn = false;
+var count = 0;
 manager.framework = function(_gd) {
     var config, previousConfigClone, plot, convertedInput, container;
     var undoManager = new UndoManager();
@@ -39,24 +40,28 @@ manager.framework = function(_gd) {
         config = (!config) ?
             _inputConfig :
             extendDeepAll(config, _inputConfig);
+
         if(!plot) plot = micropolar.Axis();
         convertedInput = adapter.plotly().convert(config);
         scale = scale * scaler;
         if(flipRadian) {
             this.isRadianOn = !this.isRadianOn;
         }
-        plot.config(convertedInput).render(container, scale, this.isRadianOn);
+        count++;
+        plot.config(convertedInput).render(container, scale, this.isRadianOn, count);
         _gd.data = config.data;
         _gd.layout = config.layout;
         manager.fillLayout(_gd);
         var ModeBar = require('../../components/modebar');
         ModeBar.manage(_gd);
+        console.log("count",count);
         return config;
     }
     exports.isPolar = true;
     exports.svg = function() { return plot.svg(); };
     exports.getConfig = function() { return config; };
     exports.getLiveConfig = function() {
+        console.log("try to build adapter");
         return adapter.plotly().convert(plot.getLiveConfig(), true);
     };
     exports.getLiveScales = function() { return {t: plot.angularScale(), r: plot.radialScale()}; };

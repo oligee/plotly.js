@@ -11,13 +11,15 @@ var d3 = require('d3');
 var Lib = require('../../lib');
 var extendDeepAll = Lib.extendDeepAll;
 var µ = module.exports = { version: '0.2.2' };
+var PLOT_ID = 0;
+
 // The Legend is the "key" in the top right of the graph, displaying infomation on the various data on the graph
 // Has the abbility to show and hide data for user ease
-µ.Legend = function module() {
+µ.Legend = function module(ID) {
+    PLOT_ID = ID;
     var config = µ.Legend.defaultConfig();
     var dispatch = d3.dispatch('hover');
     function exports() {
-
         var legendConfig = config.legendConfig;
         var flattenData = flattenConfigElements(config, legendConfig);
         var data = setupData(flattenData, legendConfig);
@@ -31,7 +33,7 @@ var µ = module.exports = { version: '0.2.2' };
         // Is the data continuous ?
         var isContinuous = legendConfig.isContinuous === null ? typeof data[0] === 'number' : legendConfig.isContinuous;
         var height = isContinuous ? legendConfig.height : lineHeight * data.length;
-        var legendContainerGroup = container.classed('legend-group', true);
+        var legendContainerGroup = container.classed('legend-group1', true);
         var svg = legendContainerGroup.selectAll('svg').data([ 0 ]);
         defineSVG(svg, height, lineHeight);
         var dataNumbered = d3.range(data.length);
@@ -142,10 +144,11 @@ function applyLegendClickHandler(tickElements, legends, legendConfig, colorScale
     for(var i = 0, n = tickElements.length; i < n - 1; i++) {
         var el = tickElements[i];
         var key = legends[i];
+        var valueTest = PLOT_ID;
         // Listener for the text
-        el.addEventListener('click', (function(i, el) {return function() {
-            var li = document.getElementsByClassName('line');
-            // var li = document.querySelectorAll('path[class^="line"]');
+        el.addEventListener('click', (function(i, el, valueTest) {return function() {
+            var plot = document.getElementsByClassName('background-circle' + valueTest);
+            var li = plot[0].parentElement.getElementsByClassName('line');
             if(el.childNodes[1].style.fill === legendConfig.textColor) {
                 el.childNodes[1].style.fill = 'black';
                 legends[i].style.fill = 'black';
@@ -156,7 +159,7 @@ function applyLegendClickHandler(tickElements, legends, legendConfig, colorScale
                 legends[i].style.fill = colorScale(i);
             }
         };
-        })(i, el), false);
+        })(i, el, valueTest), false);
         // Listener for the legend
         key.addEventListener('click', (function(i, el) {return function() {
             if(el.childNodes[1].style.fill === legendConfig.textColor) {
@@ -167,7 +170,7 @@ function applyLegendClickHandler(tickElements, legends, legendConfig, colorScale
                 legends[i].style.fill = colorScale(i);
             }
         };
-        })(i, el), false);
+        })(i, el,valueTest), false);
     }
 }
 // Applys the default text colour, mainly used to pass pixel comparison tests
